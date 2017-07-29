@@ -4,7 +4,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <vector> // ughh
+#include <algorithm>  // ughh
+#include <vector>  // ughh
 
 #if __EMSCRIPTEN__
     #include <emscripten.h>

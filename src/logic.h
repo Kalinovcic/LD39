@@ -11,4 +11,6 @@ bool input_left;
 bool input_right;
 bool input_up;
 
+void create_level(int count_x, int count_z);
+
 void frame();

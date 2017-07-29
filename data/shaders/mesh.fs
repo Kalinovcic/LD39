@@ -6,6 +6,7 @@ uniform vec3  material_diffuse  [MAX_MATERIALS];
 uniform vec3  material_specular [MAX_MATERIALS];
 uniform float material_shininess[MAX_MATERIALS];
 uniform vec3  light_direction;
+uniform vec3  color_multiplier;
 
 varying vec3  fragment_to_camera;
 varying vec3  fragment_normal;
@@ -30,7 +31,7 @@ void main()
     float brightness = dot(fragment_normal, -light_direction);
     if (brightness < 0.0) brightness = 0.0;
     brightness = brightness * 0.5 + 0.5;
-    diffuse = diffuse * brightness;
+    diffuse = diffuse * color_multiplier * brightness;
 
     float specular_factor = dot(reflect(light_direction, fragment_normal), fragment_to_camera);
     if (specular_factor < 0.0) specular_factor = 0.0;

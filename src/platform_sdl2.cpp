@@ -9,6 +9,9 @@ Window the_window;
 
 void create_the_window()
 {
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
     /*SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);*/
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -57,6 +60,7 @@ void process_events()
         } break;
         case SDL_KEYDOWN:
         {
+            if (event.key.repeat) break;
             auto scan = event.key.keysym.scancode;
             if (scan == SDL_SCANCODE_LEFT  || scan == SDL_SCANCODE_A) input_left  = true;
             if (scan == SDL_SCANCODE_RIGHT || scan == SDL_SCANCODE_D) input_right = true;

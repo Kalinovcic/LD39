@@ -50,6 +50,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     init_audio_system();
 
     load_data();
+    create_level(16, 16);
 
 #if WEB
     emscripten_set_main_loop_arg(main_loop, NULL, -1, 1);

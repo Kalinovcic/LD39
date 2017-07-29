@@ -178,6 +178,7 @@ GLuint mesh_u_material_diffuse;
 GLuint mesh_u_material_specular;
 GLuint mesh_u_material_shininess;
 GLuint mesh_u_light_direction;
+GLuint mesh_u_color_multiplier;
 
 void load_mesh_shader()
 {
@@ -193,6 +194,7 @@ void load_mesh_shader()
     mesh_u_material_specular  = glGetUniformLocation(mesh_program, "material_specular");
     mesh_u_material_shininess = glGetUniformLocation(mesh_program, "material_shininess");
     mesh_u_light_direction    = glGetUniformLocation(mesh_program, "light_direction");
+    mesh_u_color_multiplier   = glGetUniformLocation(mesh_program, "color_multiplier");
 }
 
 void begin_mesh(Mesh* mesh)
@@ -236,7 +238,12 @@ void end_mesh()
     glDisableVertexAttribArray(2);
 }
 
-void render_mesh(Mesh* mesh, m4 model)
+void set_mesh_color_multiplier(v3 color_multiplier)
+{
+    glUniform3fv(mesh_u_color_multiplier, 1, (GLfloat*) &color_multiplier);
+}
+
+void render_mesh(Mesh* mesh, m4& model)
 {
     glUniformMatrix4fv(mesh_u_model, 1, GL_FALSE, (GLfloat*) &model);
     glDrawArrays(GL_TRIANGLES, 0, mesh->vertices.size());
@@ -244,5 +251,6 @@ void render_mesh(Mesh* mesh, m4 model)
 
 void render_mesh(Mesh* mesh, v3 position, float orientation)
 {
-    render_mesh(mesh, glm::translate(position) * glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f)));
+    auto model_matrix = glm::translate(position) * glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f));
+    render_mesh(mesh, model_matrix);
 }

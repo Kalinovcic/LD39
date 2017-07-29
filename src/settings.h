@@ -4,9 +4,10 @@
 #define WEB 1
 #endif
 
-typedef unsigned char  u8;
-typedef unsigned short u16;
-typedef unsigned int   u32;
+typedef unsigned char          u8;
+typedef unsigned short         u16;
+typedef unsigned int           u32;
+typedef unsigned long long int u64;
 
 typedef glm::vec3 v3;
 typedef glm::vec4 v4;

@@ -34,5 +34,6 @@ void create_mesh(const char* path, Mesh* mesh);
 void load_mesh_shader();
 void begin_mesh(Mesh* mesh);
 void end_mesh();
-void render_mesh(Mesh* mesh, m4 model);
+void set_mesh_color_multiplier(v3 color_multiplier);
+void render_mesh(Mesh* mesh, m4& model);
 void render_mesh(Mesh* mesh, v3 position, float orientation);
