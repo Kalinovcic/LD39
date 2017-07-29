@@ -7,9 +7,26 @@ void initialize_backend()
     }
 }
 
+void init_opengl()
+{
+    glClearColor(1.0f, 0.5f, 0.0f, 1.0f);
+
+    glEnable(GL_DEPTH_TEST);
+    glClearDepthf(1.0f);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(true);
+
+    load_mesh_shader();
+}
+
 void main_loop(void* unused)
 {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    process_events();
+
     frame();
+
+    swap_buffers();
 
 #if WEB
     if (window_requests_close)

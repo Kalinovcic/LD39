@@ -32,4 +32,7 @@ void load_mesh_from_obj(char* path, Mesh* mesh);
 void create_mesh(const char* path, Mesh* mesh);
 
 void load_mesh_shader();
-void render_mesh(Mesh* mesh);
+void begin_mesh(Mesh* mesh);
+void end_mesh();
+void render_mesh(Mesh* mesh, m4 model);
+void render_mesh(Mesh* mesh, v3 position, float orientation);

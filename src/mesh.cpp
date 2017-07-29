@@ -195,22 +195,9 @@ void load_mesh_shader()
     mesh_u_light_direction    = glGetUniformLocation(mesh_program, "light_direction");
 }
 
-int ticks = 0;
-
-void render_mesh(Mesh* mesh)
+void begin_mesh(Mesh* mesh)
 {
-    ticks++;
-
     glUseProgram(mesh_program);
-
-    v3 camera = glm::vec3(0.0f, 1.0f, 2.0f);
-    v3 light_direction = glm::normalize(-camera);
-
-    m4 perspective = glm::perspective(glm::radians(60.0f), (float) window_width / (float) window_height, 0.1f, 100.0f);
-    m4 view = glm::lookAt(camera, glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    m4 perspective_view = perspective * view;
-
-    m4 model = glm::rotate(ticks / 30.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 
     v3    materials_diffuse  [MAX_MATERIALS];
     v3    materials_specular [MAX_MATERIALS];
@@ -225,7 +212,6 @@ void render_mesh(Mesh* mesh)
     }
 
     glUniformMatrix4fv(mesh_u_perspective_view, 1, GL_FALSE, (GLfloat*) &perspective_view);
-    glUniformMatrix4fv(mesh_u_model,            1, GL_FALSE, (GLfloat*) &model);
     glUniform3fv(mesh_u_camera,             1,              (GLfloat*) &camera);
     glUniform3fv(mesh_u_material_diffuse,   material_count, (GLfloat*) materials_diffuse);
     glUniform3fv(mesh_u_material_specular,  material_count, (GLfloat*) materials_specular);
@@ -241,10 +227,22 @@ void render_mesh(Mesh* mesh)
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
+}
 
-    glDrawArrays(GL_TRIANGLES, 0, mesh->vertices.size());
-
+void end_mesh()
+{
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
     glDisableVertexAttribArray(2);
+}
+
+void render_mesh(Mesh* mesh, m4 model)
+{
+    glUniformMatrix4fv(mesh_u_model, 1, GL_FALSE, (GLfloat*) &model);
+    glDrawArrays(GL_TRIANGLES, 0, mesh->vertices.size());
+}
+
+void render_mesh(Mesh* mesh, v3 position, float orientation)
+{
+    render_mesh(mesh, glm::translate(position) * glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f)));
 }
