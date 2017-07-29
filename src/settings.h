@@ -28,6 +28,9 @@ void critical(const char* format, ...)
     va_start(args, format);
 #if WEB
     vfprintf(stderr, format, args);
+    EM_ASM(
+        Module.horrible_error();
+    );
 #else
     char buffer[512];
     vsnprintf(buffer, sizeof(buffer), format, args);

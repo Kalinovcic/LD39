@@ -57,7 +57,10 @@ void process_events()
         } break;
         case SDL_KEYDOWN:
         {
-            play_sound(&sound_fireball);
+            auto scan = event.key.keysym.scancode;
+            if (scan == SDL_SCANCODE_LEFT  || scan == SDL_SCANCODE_A) input_left  = true;
+            if (scan == SDL_SCANCODE_RIGHT || scan == SDL_SCANCODE_D) input_right = true;
+            if (scan == SDL_SCANCODE_UP    || scan == SDL_SCANCODE_W) input_up    = true;
         } break;
         }
     }

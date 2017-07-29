@@ -124,6 +124,13 @@
           canvas.addEventListener("webglcontextlost", function(e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
           return canvas;
         })(),
+        horrible_error: function() {
+          var e = document.getElementById('loading');
+          e.style.visibility = 'visible';
+          e.innerHTML = "An error has occured...";
+          e = document.getElementById('canvas');
+          e.style.visibility = 'hidden';
+        },
         setStatus: function(text) {},
         totalDependencies: 0,
         monitorRunDependencies: function(left) {}

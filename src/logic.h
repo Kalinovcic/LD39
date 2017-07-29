@@ -7,4 +7,8 @@ m4 perspective_view;
 m4 perspective;
 m4 view;
 
+bool input_left;
+bool input_right;
+bool input_up;
+
 void frame();
