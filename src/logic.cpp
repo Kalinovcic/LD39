@@ -362,7 +362,7 @@ void frame()
 
         render_scene();
     }
-    else if (state = STATE_PLAYING)
+    else if (state == STATE_PLAYING)
     {
         update_robot();
 
