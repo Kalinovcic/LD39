@@ -8,6 +8,16 @@ double seconds_since_start = 0.0;
 
 v3 target_camera;
 
+enum State
+{
+    STATE_LEVEL_ANIMATION,
+    STATE_DEATH_ANIMATION,
+    STATE_PLAYING,
+};
+
+State state;
+double state_time;
+
 struct Tile
 {
     int   y;
@@ -53,6 +63,11 @@ inline Tile* get_tile(int x, int z)
     return &level.tiles[z * level.count_x + x];
 }
 
+float get_desired_tile_display_y(int y)
+{
+    return (float) y * 0.75f;
+}
+
 v3 get_robot_display_position()
 {
     float x = robot.display_x + 0.5f;
@@ -61,10 +76,13 @@ v3 get_robot_display_position()
     return glm::vec3(x, y, z);
 }
 
-void place_camera()
+void place_camera(bool use_desired = false)
 {
-    camera_vector = glm::vec3(1.0f, -2.0, -1.0f);
-    target_camera = get_robot_display_position() - camera_vector * 3.0f;
+    camera_vector = glm::vec3(1.0f, -1.3, -1.0f);
+    target_camera = get_robot_display_position();
+    if (use_desired)
+        target_camera.y = get_desired_tile_display_y(get_tile(robot.tile_x, robot.tile_z)->y);
+    target_camera -= camera_vector * 3.0f;
     camera += (target_camera - camera) * std::min((float) 1.0f, (float) delta_seconds * 4.0f);
 }
 
@@ -111,7 +129,7 @@ void animate_robot()
     }
 }
 
-void move_robot()
+void move_robot(int direction)
 {
     if (robot.animating) return;
 
@@ -124,8 +142,8 @@ void move_robot()
     static int DZ[] = {  0,  1,  0, -1 };
 
     int orientation = robot.angle / 90;
-    int dx = DX[orientation];
-    int dz = DZ[orientation];
+    int dx = DX[orientation] * direction;
+    int dz = DZ[orientation] * direction;
 
     int new_x = robot.tile_x + dx;
     int new_z = robot.tile_z + dz;
@@ -183,29 +201,33 @@ void rotate_robot(int plus_minus)
 bool queue_left;
 bool queue_right;
 bool queue_up;
+bool queue_down;
 
 void update_robot()
 {
     if (robot.animating)
     {
-        if (input_left)  { queue_left = true;  queue_right = false; queue_up = false; }
-        if (input_right) { queue_left = false; queue_right = true;  queue_up = false; }
-        if (input_up)    { queue_left = false; queue_right = false; queue_up = true;  }
+        if (input_left)  { queue_left = true;  queue_right = false; queue_up = false; queue_down = false; }
+        if (input_right) { queue_left = false; queue_right = true;  queue_up = false; queue_down = false; }
+        if (input_up)    { queue_left = false; queue_right = false; queue_up = true;  queue_down = false; }
+        if (input_down)  { queue_left = false; queue_right = false; queue_up = false; queue_down = true;  }
     }
     else
     {
         if (queue_left)  { input_left  = true; queue_left  = false; }
         if (queue_right) { input_right = true; queue_right = false; }
         if (queue_up)    { input_up    = true; queue_up    = false; }
+        if (queue_down)  { input_down  = true; queue_down  = false; }
     }
 
     if (input_left)  rotate_robot( 1);
     if (input_right) rotate_robot(-1);
-    if (input_up)    move_robot();
+    if (input_up)    move_robot( 1);
+    if (input_down)  move_robot(-1);
 
     animate_robot();
 
-    input_left = input_right = input_up = false;
+    input_left = input_right = input_up = input_down = false;
 }
 
 void render_robot()
@@ -226,6 +248,9 @@ void create_level(int index)
 {
     if (level.tiles) free(level.tiles);
 
+    state = STATE_LEVEL_ANIMATION;
+    state_time = 1.5;
+
     char path[128];
     Image level_layout, level_decor;
 
@@ -238,21 +263,19 @@ void create_level(int index)
     level.count_z = level_layout.height;
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
 
-    for (int x = 0; x < level.count_x; x++)
-        for (int z = 0; z < level.count_z; z++)
+    for (int i = 0; i < level.count_x * level.count_z; i++)
+    {
+        auto tile = &level.tiles[i];
+        tile->y         = level_layout.data[i * 3] / 64;
+        tile->display_y = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
+        tile->color     = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
+        tile->pickup    = (rand() % 30) == 0;
+        if (tile->pickup)
         {
-            int i = z * level.count_x + x;
-            auto tile = get_tile(x, z);
-            tile->y         = level_layout.data[i * 3] / 64;
-            tile->display_y = (float) tile->y * 0.75f;
-            tile->color     = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
-            tile->pickup    = (rand() % 30) == 0;
-            if (tile->pickup)
-            {
-                tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
-                tile->display_y += 0.08f;
-            }
+            tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
+            tile->display_y += 0.08f;
         }
+    }
 
     free_image(&level_layout);
     free_image(&level_decor);
@@ -262,7 +285,7 @@ void create_level(int index)
     robot.angle = 180;
     animate_robot();
 
-    place_camera();
+    place_camera(true);
     camera = target_camera;
 }
 
@@ -286,14 +309,13 @@ void render_level()
             auto tile = get_tile(x, z);
             if (!tile->pickup) continue;
             float y = tile->display_y;
-            render_mesh(&mesh_pickup, glm::vec3((float) x + 0.5f, y, (float) z + 0.5f), 0.0f);
+            render_mesh(&mesh_pickup, glm::vec3((float) x + 0.5f, y + sin(seconds_since_start) * 0.1f, (float) z + 0.5f), seconds_since_start * 0.4f);
         }
     end_mesh();
 }
 
 void render_scene()
 {
-    place_camera();
     light_direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.2f));
 
     perspective = glm::perspective(glm::radians(60.0f), (float) window_width / (float) window_height, 0.1f, 100.0f);
@@ -316,6 +338,35 @@ void frame()
     delta_seconds = (double) delta / (double) counter_frequency;
     seconds_since_start += delta_seconds;
 
-    update_robot();
-    render_scene();
+    if (state == STATE_LEVEL_ANIMATION)
+    {
+        state_time -= delta_seconds;
+        if (state_time <= 0.0)
+        {
+            state = STATE_PLAYING;
+            state_time = 0.0;
+        }
+
+        for (int i = 0; i < level.count_x * level.count_z; i++)
+        {
+            auto tile = &level.tiles[i];
+            float desired = get_desired_tile_display_y(tile->y);
+            if (state_time <= 0.0)
+                tile->display_y = desired;
+            else
+                tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
+        }
+
+        animate_robot();
+        place_camera(true);
+
+        render_scene();
+    }
+    else if (state = STATE_PLAYING)
+    {
+        update_robot();
+
+        place_camera();
+        render_scene();
+    }
 }

@@ -65,6 +65,7 @@ void process_events()
             if (scan == SDL_SCANCODE_LEFT  || scan == SDL_SCANCODE_A) input_left  = true;
             if (scan == SDL_SCANCODE_RIGHT || scan == SDL_SCANCODE_D) input_right = true;
             if (scan == SDL_SCANCODE_UP    || scan == SDL_SCANCODE_W) input_up    = true;
+            if (scan == SDL_SCANCODE_DOWN  || scan == SDL_SCANCODE_S) input_down  = true;
         } break;
         }
     }

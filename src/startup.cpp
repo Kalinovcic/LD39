@@ -9,7 +9,7 @@ void initialize_backend()
 
 void init_opengl()
 {
-    glClearColor(1.0f, 0.5f, 0.0f, 1.0f);
+    glClearColor(135.0f/255.0f, 206.0f/255.0f, 250.0f/255.0f, 1.0f);
 
     glEnable(GL_DEPTH_TEST);
     glClearDepthf(1.0f);

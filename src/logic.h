@@ -10,6 +10,7 @@ m4 view;
 bool input_left;
 bool input_right;
 bool input_up;
+bool input_down;
 
 void create_level(int index);
 
