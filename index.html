@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>LD39</title>
+    <style>
+      body {
+        font-family: "Segoe UI", "Arial", sans-serif;
+        margin: 0;
+        padding: none;
+        background: #1f1f1f;
+      }
+
+      #outer {
+        width: 100%;
+        text-align: center;
+        margin: 0;
+        padding: none;
+      }
+
+      #inner {
+        width: 960px;
+        display: inline-block;
+        margin: 0;
+        margin-top: 30px;
+        padding: none;
+      }
+
+      .shadowed {
+        box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+      }
+
+      #loading {
+        width: 960px;
+        line-height: 400px;
+        font-size: 50px;
+        color: white;
+        position: absolute;
+        top: 30px;
+      }
+
+      #canvas {
+        width: 960px;
+        height: 540px;
+        border: 0px none;
+        visibility: hidden;
+      }
+
+      #button {
+        width: 475px;
+        border: none;
+        background-color: #2a2a2a;
+        color: white;
+        margin-top: 10px;
+        padding: 0px;
+        padding-top: 15px;
+        padding-bottom: 15px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+
+        -webkit-transition-duration: 0.1s;
+        transition-duration: 0.1s;
+      }
+
+      #button:hover {
+        background-color: #3a3a3a;
+      }
+
+      .left {
+        float: left;
+      }
+
+      .right {
+        float: right;
+      }
+
+      #description {
+        margin-top: 80px;
+        font-size: 16px;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="outer">
+      <div id="inner">
+        <canvas id="canvas" class="shadowed" oncontextmenu="event.preventDefault()"></canvas>
+        <p id="loading">Loading...</p>
+        <!-- <a class="shadowed" id="button" type="button" onclick="Module.requestFullScreen(true, true)">Fullscreen</a> -->
+        <a class="shadowed left" id="button" type="button" href="https://www.google.com">Download for Windows</a>
+        <a class="shadowed right" id="button" type="button" href="https://www.google.com">GitHub repository</a>
+        <p id="description">
+          <b>GameNameHere</b> was made in under 48 hours for the <b>Ludum Dare 39</b> game jam.<br/>
+          All of the source code and assets for the game are in public domain.<br/>
+          Lovro Kalinovčić, 2017<br/>
+        </p>
+      </div>
+    </div>
+    <script type='text/javascript'>
+      var Module = {
+        preRun: [],
+        postRun: [],
+        print: (function() {
+          return function(text) {
+            if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+            console.log(text);
+          };
+        })(),
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.error(text);
+        },
+        onRuntimeInitialized: function() {
+          var e = document.getElementById('loading');
+          e.style.visibility = 'hidden';
+          e = document.getElementById('canvas');
+          e.style.visibility = 'visible';
+        },
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener("webglcontextlost", function(e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
+          return canvas;
+        })(),
+        setStatus: function(text) {},
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {}
+      };
+      window.onerror = function(event) {};
+    </script>
+    <script async type="text/javascript" src="ld39.js"></script>
+  </body>
+</html>
