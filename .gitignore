@@ -2,3 +2,5 @@
 *.obj
 *.gch
 *.pch
+*.exe
+*.dll
