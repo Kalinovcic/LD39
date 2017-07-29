@@ -47,8 +47,8 @@ void uninit_audio_system()
 void load_sound(Sound* sound, const char* path)
 {
     SDL_AudioSpec spec;
-    uint8* data;
-    uint32 length;
+    u8* data;
+    u32 length;
     auto bytes = read_all_bytes_from_file(path, false);;
     if (!SDL_LoadWAV_RW(SDL_RWFromMem(bytes.data, bytes.count), 1, &spec, &data, &length))
     {

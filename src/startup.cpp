@@ -21,6 +21,8 @@ void main_loop(void* unused)
 
 #if WEB
 int main()
+#elif CONSOLE
+int wmain()
 #else
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
@@ -28,9 +30,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     initialize_backend();
     create_the_window();
     init_opengl();
-
     init_audio_system();
-    load_sound(&sound_fireball, "data/audio/fireball.wav");
+
+    load_data();
 
 #if WEB
     emscripten_set_main_loop_arg(main_loop, NULL, -1, 1);

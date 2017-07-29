@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <ctype.h>
+
+#include <vector> // ughh
 
 #if __EMSCRIPTEN__
     #include <emscripten.h>
@@ -15,6 +18,9 @@
     #include "SDL2/SDL.h"
 #endif
 
+#include "glm/glm.hpp"
+#include "glm/gtx/transform.hpp"
+
 #include "AL/al.h"
 #include "AL/alc.h"
 
@@ -24,6 +30,7 @@
 #include "renderer.h"
 #include "shader.h"
 #include "logic.h"
+#include "mesh.h"
 
 #include "data.h"
 
@@ -34,3 +41,4 @@
 #include "renderer.cpp"
 #include "shader.cpp"
 #include "logic.cpp"
+#include "mesh.cpp"

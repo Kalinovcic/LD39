@@ -2,13 +2,15 @@
 
 #if __EMSCRIPTEN__
 #define WEB 1
-#else
-#define WEB 0
 #endif
 
-typedef unsigned char  uint8;
-typedef unsigned short uint16;
-typedef unsigned int   uint32;
+typedef unsigned char  u8;
+typedef unsigned short u16;
+typedef unsigned int   u32;
+
+typedef glm::vec3 v3;
+typedef glm::vec4 v4;
+typedef glm::mat4 m4;
 
 struct String
 {
@@ -33,4 +35,12 @@ void critical(const char* format, ...)
 #endif
     va_end(args);
     exit(0);
+}
+
+char* copy_string(char* str)
+{
+    int len = strlen(str);
+    char* new_str = (char*) malloc(len + 1);
+    memcpy(new_str, str, len + 1);
+    return new_str;
 }
