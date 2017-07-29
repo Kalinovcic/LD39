@@ -13,6 +13,8 @@ struct Tile
     int   y;
     float display_y;
     v3    color;
+
+    bool pickup;
 };
 
 struct Level
@@ -29,6 +31,7 @@ struct Robot
     int angle;
 
     float display_x;
+    float display_y;
     float display_z;
     float display_angle;
 
@@ -37,6 +40,7 @@ struct Robot
     float animation_time;
     float animation_reverse_time;
     float velocity_x;
+    float velocity_y;
     float velocity_z;
     float velocity_angle;
 };
@@ -52,8 +56,8 @@ inline Tile* get_tile(int x, int z)
 v3 get_robot_display_position()
 {
     float x = robot.display_x + 0.5f;
-    float z = robot.display_z - 0.5f;
-    float y = get_tile(robot.tile_x, robot.tile_z)->display_y;
+    float y = robot.display_y;
+    float z = robot.display_z + 0.5f;
     return glm::vec3(x, y, z);
 }
 
@@ -74,12 +78,14 @@ void animate_robot()
         if (robot.animation_reverses && robot.animation_reverse_time <= 0.0)
         {
             robot.velocity_x     = -robot.velocity_x;
+            robot.velocity_y     = -robot.velocity_y;
             robot.velocity_z     = -robot.velocity_z;
             robot.velocity_angle = -robot.velocity_angle;
             robot.animation_reverses = false;
         }
 
         robot.display_x     += delta_seconds * robot.velocity_x;
+        robot.display_y     += delta_seconds * robot.velocity_y;
         robot.display_z     += delta_seconds * robot.velocity_z;
         robot.display_angle += delta_seconds * robot.velocity_angle;
 
@@ -94,10 +100,12 @@ void animate_robot()
         robot.animation_reverses = false;
 
         robot.display_x     = robot.tile_x;
+        robot.display_y     = get_tile(robot.tile_x, robot.tile_z)->display_y;
         robot.display_z     = robot.tile_z;
         robot.display_angle = robot.angle;
 
         robot.velocity_x     = 0;
+        robot.velocity_y     = 0;
         robot.velocity_z     = 0;
         robot.velocity_angle = 0;
     }
@@ -121,31 +129,37 @@ void move_robot()
 
     int new_x = robot.tile_x + dx;
     int new_z = robot.tile_z + dz;
+    float new_y = robot.display_y;
 
-    if (new_x < 0 || new_x >= level.count_x || new_z < 0 || new_z >= level.count_z ||
-        get_tile(robot.tile_x, robot.tile_z)->y != get_tile(new_x, new_z)->y)
+    bool move = true;
+    if (new_x < 0 || new_x >= level.count_x || new_z < 0 || new_z >= level.count_z)
+        move = false;
+    else if (get_tile(robot.tile_x, robot.tile_z)->y != get_tile(new_x, new_z)->y)
+        move = false;
+    else
+        new_y = get_tile(new_x, new_z)->display_y;
+
+    float delta_move = 1.0f;
+    if (move)
     {
-        play_sound(&sound_robot_hit, 1.0);
-
-        robot.animating = true;
+        play_sound(&sound_robot_move[next_move_sound = (next_move_sound + 1) % 3]);
+        robot.tile_x = new_x;
+        robot.tile_z = new_z;
+        robot.animation_time = 0.5;
+    }
+    else
+    {
+        play_sound(&sound_robot_hit);
         robot.animation_reverses = true;
-        robot.animation_time = 0.2;
         robot.animation_reverse_time = 0.1;
-        robot.velocity_x = dx * 0.5 / robot.animation_time;
-        robot.velocity_z = dz * 0.5 / robot.animation_time;
-
-        return;
+        robot.animation_time = 0.2;
+        delta_move = 0.5;
     }
 
-    robot.tile_x = new_x;
-    robot.tile_z = new_z;
-
     robot.animating = true;
-    robot.animation_time = 0.5;
-    robot.velocity_x = dx * 1.0 / robot.animation_time;
-    robot.velocity_z = dz * 1.0 / robot.animation_time;
-
-    play_sound(&sound_robot_move[next_move_sound = (next_move_sound + 1) % 3], 1.0);
+    robot.velocity_x = dx * delta_move / robot.animation_time;
+    robot.velocity_y = (new_y - robot.display_y) / robot.animation_time;
+    robot.velocity_z = dz * delta_move / robot.animation_time;
 }
 
 void rotate_robot(int plus_minus)
@@ -160,10 +174,10 @@ void rotate_robot(int plus_minus)
     else
         robot.angle = robot.angle % 360;
 
-    robot.animation_time = 0.5;
+    robot.animation_time = 0.3;
     robot.velocity_angle = plus_minus * 90 * 1.0 / robot.animation_time;
 
-    play_sound(&sound_robot_turn, 0.5);
+    play_sound(&sound_robot_turn);
 }
 
 bool queue_left;
@@ -208,25 +222,43 @@ void render_robot()
     end_mesh();
 }
 
-void create_level(int count_x, int count_z)
+void create_level(int index)
 {
     if (level.tiles) free(level.tiles);
 
-    level.count_x = count_x;
-    level.count_z = count_z;
+    char path[128];
+    Image level_layout, level_decor;
+
+    sprintf(path, "data/levels/%dlayout.png", index);
+    load_image(path, &level_layout);
+    sprintf(path, "data/levels/%ddecor.png", index);
+    load_image(path, &level_decor);
+
+    level.count_x = level_layout.width;
+    level.count_z = level_layout.height;
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
 
-    for (int x = 0; x < count_x; x++)
-        for (int z = 0; z < count_z; z++)
+    for (int x = 0; x < level.count_x; x++)
+        for (int z = 0; z < level.count_z; z++)
         {
+            int i = z * level.count_x + x;
             auto tile = get_tile(x, z);
-            tile->y         = (z == count_z / 2) ? 0 : (x % 5 == 0 ? 1 : 0);
+            tile->y         = level_layout.data[i * 3] / 64;
             tile->display_y = (float) tile->y * 0.75f;
-            tile->color     = glm::vec3(0.5f, z / (float) count_z, x / (float) count_x);
+            tile->color     = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
+            tile->pickup    = (rand() % 30) == 0;
+            if (tile->pickup)
+            {
+                tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
+                tile->display_y += 0.08f;
+            }
         }
 
-    robot.tile_x = count_x / 2;
-    robot.tile_z = count_z / 2;
+    free_image(&level_layout);
+    free_image(&level_decor);
+
+    robot.tile_x = level.count_x / 2;
+    robot.tile_z = level.count_z / 2;
     robot.angle = 180;
     animate_robot();
 
@@ -244,6 +276,17 @@ void render_level()
             float y = tile->display_y;
             set_mesh_color_multiplier(tile->color);
             render_mesh(&mesh_block, glm::vec3((float) x, y, (float) z), 0.0f);
+        }
+    end_mesh();
+
+    begin_mesh(&mesh_pickup);
+    for (int x = 0; x < level.count_x; x++)
+        for (int z = 0; z < level.count_z; z++)
+        {
+            auto tile = get_tile(x, z);
+            if (!tile->pickup) continue;
+            float y = tile->display_y;
+            render_mesh(&mesh_pickup, glm::vec3((float) x + 0.5f, y, (float) z + 0.5f), 0.0f);
         }
     end_mesh();
 }

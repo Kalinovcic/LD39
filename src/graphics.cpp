@@ -70,3 +70,17 @@ GLuint create_opengl_shader(const char* vertex, const char* fragment)
 
     return program;
 }
+
+void load_image(const char* path, Image* image, int channels)
+{
+    auto source = read_all_bytes_from_file(path, false);
+
+    int file_channels;
+    image->data = stbi_load_from_memory((stbi_uc const *) source.data, source.count, &image->width, &image->height, &file_channels, channels);
+    image->channels = channels;
+}
+
+void free_image(Image* image)
+{
+    stbi_image_free(image->data);
+}

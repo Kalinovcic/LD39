@@ -25,10 +25,13 @@
 #include "AL/al.h"
 #include "AL/alc.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
+
 #include "settings.h"
 #include "platform.h"
 #include "audio_engine.h"
-#include "shader.h"
+#include "graphics.h"
 #include "logic.h"
 #include "mesh.h"
 
@@ -38,6 +41,6 @@
 #include "platform_crt.cpp"
 #include "platform_sdl2.cpp"
 #include "audio_engine.cpp"
-#include "shader.cpp"
+#include "graphics.cpp"
 #include "logic.cpp"
 #include "mesh.cpp"
