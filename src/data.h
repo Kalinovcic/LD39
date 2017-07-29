@@ -10,6 +10,9 @@ Sound sound_robot_move[3];
 Sound sound_robot_turn;
 Sound sound_robot_hit;
 
+// fonts
+Font font;
+
 int next_move_sound;
 
 void load_data()
@@ -23,4 +26,6 @@ void load_data()
     load_sound(&sound_robot_move[2], "data/audio/robot_move2.wav");
     load_sound(&sound_robot_turn,    "data/audio/robot_turn.wav");
     load_sound(&sound_robot_hit,     "data/audio/robot_hit.wav");
+
+    load_font("data/fonts/NotoSans-Regular.ttf", &font);
 }

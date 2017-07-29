@@ -63,9 +63,21 @@ inline Tile* get_tile(int x, int z)
     return &level.tiles[z * level.count_x + x];
 }
 
-float get_desired_tile_display_y(int y)
+inline float get_desired_tile_display_y(int y)
 {
     return (float) y * 0.75f;
+}
+
+inline v3 get_tile_display_position(int x, int z)
+{
+    return glm::vec3((float) x, get_tile(x, z)->display_y, (float) z);
+}
+
+inline v2 world_to_screen(v3 world)
+{
+    v4 homo = perspective_view * glm::vec4(world, 1.0);
+    v2 window = glm::vec2((GLfloat) window_width, (GLfloat) window_height);
+    return (glm::vec2((float) homo.x, (float) homo.y) / homo.w * 0.5f + 0.5f) * window;
 }
 
 v3 get_robot_display_position()
@@ -321,9 +333,18 @@ void render_scene()
     perspective = glm::perspective(glm::radians(60.0f), (float) window_width / (float) window_height, 0.1f, 100.0f);
     view = glm::lookAt(camera, camera + camera_vector, glm::vec3(0.0f, 1.0f, 0.0f));
     perspective_view = perspective * view;
+    ortho = glm::ortho(0.0f, (float) window_width, 0.0f, (float) window_height);
 
     render_level();
     render_robot();
+
+    v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
+    render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 32.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
+
+    v2 white_screen = world_to_screen(get_tile_display_position(12, 3) + glm::vec3(0.5f, 0.0f, 0.5f));
+    render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 32.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
+
+    render_string(&font, 100, 100, 24.0f / 32.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
 }
 
 void frame()

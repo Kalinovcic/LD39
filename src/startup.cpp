@@ -17,6 +17,7 @@ void init_opengl()
     glDepthMask(true);
 
     load_mesh_shader();
+    load_font_shader();
 }
 
 void main_loop(void* unused)

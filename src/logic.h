@@ -6,6 +6,7 @@ v3 light_direction;
 m4 perspective_view;
 m4 perspective;
 m4 view;
+m4 ortho;
 
 bool input_left;
 bool input_right;
