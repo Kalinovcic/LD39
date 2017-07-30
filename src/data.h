@@ -4,6 +4,7 @@
 Mesh mesh_block;
 Mesh mesh_robot;
 Mesh mesh_box;
+Mesh mesh_long_box;
 Mesh mesh_detector;
 
 // sounds
@@ -26,6 +27,7 @@ void load_data()
     create_mesh("data/models/block.obj",    &mesh_block);
     create_mesh("data/models/robot.obj",    &mesh_robot);
     create_mesh("data/models/box.obj",      &mesh_box);
+    create_mesh("data/models/longbox.obj",  &mesh_long_box);
     create_mesh("data/models/detector.obj", &mesh_detector);
 
     load_sound(&sound_robot_move[0], "data/audio/robot_move0.wav");

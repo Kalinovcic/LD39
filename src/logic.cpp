@@ -15,54 +15,24 @@ enum State
 
 State state;
 
-bool previous_detector_states[256];
-bool detector_states[256];
+bool frequencies[256];
 
-struct Tile
+enum Entity_Kind
 {
-    int   y;
-    int   original_y;
-    float display_y;
-    v3    color;
-
-    bool box_on_top;
-    float box_delta_x;
-    float box_delta_z;
-    float box_delta_velocity;
-
-    bool detector_on_top;
-    int activate_on_state;
-    bool lower;
-
-    bool is_goal;
+    ENTITY_ROBOT,
+    ENTITY_GOAL,
+    ENTTIY_DETECTOR,
+    ENTITY_BOX,
 };
 
-struct Level
+struct Entity
 {
-    Tile* tiles;
-    int count_x;
-    int count_z;
+    Entity_Kind kind;
 
-    int goal_x;
-    int goal_z;
-
-    int max_moves;
-    int remaining_moves;
-
-    bool is_fading_out;
-    float fade;
-    float fade_velocity;
-
-    bool first_frame;
-    bool is_final;
-    bool won;
-};
-
-struct Robot
-{
     int tile_x;
     int tile_z;
     int angle;
+    bool extended;
 
     float display_x;
     float display_z;
@@ -75,11 +45,71 @@ struct Robot
     float velocity_x;
     float velocity_z;
     float velocity_angle;
+
+    Mesh* mesh;
+    float scale;
+};
+
+struct Robot: Entity {};
+
+struct Goal: Entity {};
+
+struct Detector: Entity
+{
+    int frequency;
+    bool pressed;
+};
+
+struct Box: Entity {};
+
+struct Tile
+{
+    int   y;
+    int   original_y;
+    float display_y;
+    v3    color;
+
+    Box* box;
+
+    int frequency;
+    bool lower;
+};
+
+struct Level
+{
+    Tile* tiles;
+    int count_x;
+    int count_z;
+
+    int max_moves;
+    int remaining_moves;
+
+    bool is_fading_out;
+    float fade;
+    float fade_velocity;
+
+    bool first_frame;
+    bool is_final;
+    bool won;
+
+    Entity* entities[128];
+    Entity** next_entity;
 };
 
 int current_level_index = 0;
 Level level;
-Robot robot;
+Robot* robot;
+Goal* goal;
+
+template <typename T>
+inline T* add_entity(Entity_Kind kind)
+{
+    auto e = (T*) malloc(sizeof(T));
+    *(level.next_entity++) = e;
+    *e = {};
+    e->kind = kind;
+    return e;
+}
 
 inline Tile* get_tile(int x, int z)
 {
@@ -103,61 +133,71 @@ inline v2 world_to_screen(v3 world)
     return (glm::vec2((float) homo.x, (float) homo.y) / homo.w * 0.5f + 0.5f) * window;
 }
 
-v3 get_robot_display_position()
+v3 get_entity_display_position(Entity* e)
 {
-    float x = robot.display_x + 0.5f;
-    float z = robot.display_z + 0.5f;
-    float y = get_tile(x, z)->display_y;
+    float x = e->display_x + 0.5f;
+    float z = e->display_z + 0.5f;
+    float y = get_tile(e->tile_x, e->tile_z)->display_y;
     return glm::vec3(x, y, z);
 }
 
-void place_camera(bool use_desired = false)
+void place_camera()
 {
     camera_vector = glm::vec3(1.0f, -1.6, -1.0f);
-    target_camera = get_robot_display_position();
-    if (use_desired)
-        target_camera.y = get_desired_tile_display_y(get_tile(robot.tile_x, robot.tile_z)->y);
+    target_camera = get_entity_display_position(robot);
+    target_camera.y = get_desired_tile_display_y(get_tile(robot->tile_x, robot->tile_z)->y);
     target_camera -= camera_vector * 3.0f;
     camera += (target_camera - camera) * std::min((float) 1.0f, (float) delta_seconds * 4.0f);
 }
 
-void animate_robot()
+void animate_entity(Entity* e)
 {
-    if (robot.animating)
+    if (e->animating)
     {
-        robot.animation_time -= delta_seconds;
-        robot.animation_reverse_time -= delta_seconds;
+        e->animation_time -= delta_seconds;
+        e->animation_reverse_time -= delta_seconds;
 
-        if (robot.animation_reverses && robot.animation_reverse_time <= 0.0)
+        if (e->animation_reverses && e->animation_reverse_time <= 0.0)
         {
-            robot.velocity_x     = -robot.velocity_x;
-            robot.velocity_z     = -robot.velocity_z;
-            robot.velocity_angle = -robot.velocity_angle;
-            robot.animation_reverses = false;
+            e->velocity_x     = -e->velocity_x;
+            e->velocity_z     = -e->velocity_z;
+            e->velocity_angle = -e->velocity_angle;
+            e->animation_reverses = false;
         }
 
-        robot.display_x     += delta_seconds * robot.velocity_x;
-        robot.display_z     += delta_seconds * robot.velocity_z;
-        robot.display_angle += delta_seconds * robot.velocity_angle;
+        e->display_x     += delta_seconds * e->velocity_x;
+        e->display_z     += delta_seconds * e->velocity_z;
+        e->display_angle += delta_seconds * e->velocity_angle;
 
-        if (robot.animation_time <= 0.0)
+        if (e->animation_time <= 0.0)
         {
-            robot.animating = false;
+            e->animating = false;
         }
     }
 
-    if (!robot.animating)
+    if (!e->animating)
     {
-        robot.animation_reverses = false;
+        e->animation_reverses = false;
 
-        robot.display_x     = robot.tile_x;
-        robot.display_z     = robot.tile_z;
-        robot.display_angle = robot.angle;
+        e->display_x     = e->tile_x;
+        e->display_z     = e->tile_z;
+        e->display_angle = e->angle;
 
-        robot.velocity_x     = 0;
-        robot.velocity_z     = 0;
-        robot.velocity_angle = 0;
+        e->velocity_x     = 0;
+        e->velocity_z     = 0;
+        e->velocity_angle = 0;
     }
+}
+
+static int DX[] = { -1,  0,  1,  0 };
+static int DZ[] = {  0,  1,  0, -1 };
+
+int correct_angle(int angle)
+{
+    if (angle < 0)
+        return 360 - (-angle % 360);
+    else
+        return angle % 360;
 }
 
 bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
@@ -165,14 +205,14 @@ bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
     if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
         return extension;
     auto tile = get_tile(x, z);
-    auto robot_tile = get_tile(robot.tile_x, robot.tile_z);
+    auto robot_tile = get_tile(robot->tile_x, robot->tile_z);
     int y0 = robot_tile->y;
     int y1 = tile->y;
     if (y0 > y1)
         return extension;
     if (y0 < y1)
         return false;
-    if (tile->box_on_top)
+    if (tile->box)
     {
         int dx = x + vx;
         int dz = z + vz;
@@ -181,13 +221,21 @@ bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
         auto displacement_tile = get_tile(dx, dz);
         if (y0 != displacement_tile->y)
             return false;
-        if (displacement_tile->box_on_top)
+        if (displacement_tile->box)
             return false;
-        tile->box_on_top = false;
-        displacement_tile->box_on_top = true;
-        displacement_tile->box_delta_x = -vx;
-        displacement_tile->box_delta_z = -vz;
-        displacement_tile->box_delta_velocity = 1.0f / vv;
+
+        auto box = tile->box;
+        box->tile_x = dx;
+        box->tile_z = dz;
+        box->animating = true;
+        box->animation_time = vv;
+        box->display_x = box->tile_x - vx;
+        box->display_z = box->tile_z - vz;
+        box->velocity_x = vx / vv;
+        box->velocity_z = vz / vv;
+
+        tile->box = NULL;
+        displacement_tile->box = box;
         return true;
     }
     return true;
@@ -195,22 +243,22 @@ bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
 
 void move_robot(int direction)
 {
-    if (robot.animating) return;
+    if (robot->animating) return;
 
-    if (robot.angle < 0)
-        robot.angle = 360 - (-robot.angle % 360);
+    if (robot->angle < 0)
+        robot->angle = 360 - (-robot->angle % 360);
     else
-        robot.angle = robot.angle % 360;
+        robot->angle = robot->angle % 360;
 
     static int DX[] = { -1,  0,  1,  0 };
     static int DZ[] = {  0,  1,  0, -1 };
 
-    int orientation = robot.angle / 90;
+    int orientation = robot->angle / 90;
     int dx = DX[orientation] * direction;
     int dz = DZ[orientation] * direction;
 
-    int new_x = robot.tile_x + dx;
-    int new_z = robot.tile_z + dz;
+    int new_x = robot->tile_x + dx;
+    int new_z = robot->tile_z + dz;
 
     bool move = can_move_to_tile(new_x, new_z, false, dx, dz, 0.5f) &&
                 can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true, dx, dz, 0.5f);
@@ -219,135 +267,86 @@ void move_robot(int direction)
     if (move)
     {
         play_sound(&sound_robot_move[next_move_sound = (next_move_sound + 1) % 3]);
-        robot.tile_x = new_x;
-        robot.tile_z = new_z;
-        robot.animation_time = 0.5;
+        robot->tile_x = new_x;
+        robot->tile_z = new_z;
+        robot->animation_time = 0.5;
 
         level.remaining_moves--;
     }
     else
     {
         play_sound(&sound_robot_hit);
-        robot.animation_reverses = true;
-        robot.animation_reverse_time = 0.1;
-        robot.animation_time = 0.2;
+        robot->animation_reverses = true;
+        robot->animation_reverse_time = 0.1;
+        robot->animation_time = 0.2;
         delta_move = 0.5;
     }
 
-    robot.animating = true;
-    robot.velocity_x = dx * delta_move / robot.animation_time;
-    robot.velocity_z = dz * delta_move / robot.animation_time;
-}
-
-float correct_angle(int angle)
-{
-    if (angle < 0)
-        return 360 - (-angle % 360);
-    else
-        return angle % 360;
+    robot->animating = true;
+    robot->velocity_x = dx * delta_move / robot->animation_time;
+    robot->velocity_z = dz * delta_move / robot->animation_time;
 }
 
 void rotate_robot(int plus_minus)
 {
-    if (robot.animating) return;
+    if (robot->animating) return;
 
     static int DX[] = { -1,  0,  1,  0 };
     static int DZ[] = {  0,  1,  0, -1 };
 
-    int orientation = robot.angle / 90;
+    int orientation = robot->angle / 90;
     int dx = DX[orientation];
     int dz = DZ[orientation];
 
-    int new_angle = correct_angle(robot.angle + 90 * plus_minus);
+    int new_angle = correct_angle(robot->angle + 90 * plus_minus);
 
     int orientation2 = new_angle / 90;
     int dx2 = DX[orientation2];
     int dz2 = DZ[orientation2];
 
     float animation_angle = 90;
-    robot.animation_time = 0.3;
+    robot->animation_time = 0.3;
 
-    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true, -dx2, -dz2, 0.3f);
+    bool turn = can_move_to_tile(robot->tile_x - dx2 - dx, robot->tile_z - dz2 - dz, true, -dx2, -dz2, 0.3f);
     if (!turn)
     {
         animation_angle = 40;
-        robot.animation_time *= 40.0 / 90.0;
+        robot->animation_time *= 40.0 / 90.0;
     }
     else
     {
-        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true, dx, dz, 0.3f);
+        turn = can_move_to_tile(robot->tile_x - dx2, robot->tile_z - dz2, true, dx, dz, 0.3f);
         if (!turn)
         {
             animation_angle = 90;
-            robot.animation_time *= 90.0 / 90.0;
+            robot->animation_time *= 90.0 / 90.0;
         }
     }
 
     if (turn)
     {
         play_sound(&sound_robot_turn);
-        robot.angle = new_angle;
+        robot->angle = new_angle;
     }
     else
     {
         play_sound(&sound_robot_hit);
-        robot.animation_reverses = true;
-        robot.animation_reverse_time = robot.animation_time / 2;
+        robot->animation_reverses = true;
+        robot->animation_reverse_time = robot->animation_time / 2;
     }
 
-    robot.animating = true;
-    robot.velocity_angle = plus_minus * animation_angle * 1.0 / robot.animation_time;
-}
-
-bool queue_left;
-bool queue_right;
-bool queue_up;
-bool queue_down;
-
-void update_robot()
-{
-    if (robot.animating)
-    {
-        if (input_left)  { queue_left = true;  queue_right = false; queue_up = false; queue_down = false; }
-        if (input_right) { queue_left = false; queue_right = true;  queue_up = false; queue_down = false; }
-        if (input_up)    { queue_left = false; queue_right = false; queue_up = true;  queue_down = false; }
-        if (input_down)  { queue_left = false; queue_right = false; queue_up = false; queue_down = true;  }
-    }
-    else
-    {
-        if (queue_left)  { input_left  = true; queue_left  = false; }
-        if (queue_right) { input_right = true; queue_right = false; }
-        if (queue_up)    { input_up    = true; queue_up    = false; }
-        if (queue_down)  { input_down  = true; queue_down  = false; }
-    }
-
-    if (input_left)  rotate_robot( 1);
-    if (input_right) rotate_robot(-1);
-    if (input_up)    move_robot( 1);
-    if (input_down)  move_robot(-1);
-
-    animate_robot();
-
-    input_left = input_right = input_up = input_down = false;
-}
-
-void render_robot()
-{
-    begin_mesh(&mesh_robot);
-
-    m4 robot_model_matrix;
-    robot_model_matrix  = glm::translate(get_robot_display_position());
-    robot_model_matrix *= glm::scale(glm::vec3(0.58f));
-    robot_model_matrix *= glm::rotate(glm::radians(robot.display_angle), glm::vec3(0.0f, 1.0f, 0.0f));
-    set_mesh_color_multiplier(glm::vec3(1.0f, 1.0f, 1.0f));
-    render_mesh(&mesh_robot, robot_model_matrix);
-
-    end_mesh();
+    robot->animating = true;
+    robot->velocity_angle = plus_minus * animation_angle * 1.0 / robot->animation_time;
 }
 
 void create_level(int index)
 {
     if (level.tiles) free(level.tiles);
+
+    Entity** to_delete = &level.entities[0];
+    while (to_delete < level.next_entity)
+        free(*(to_delete++));
+    level.next_entity = &level.entities[0];
 
     char path[128];
     Image level_layout, level_decor;
@@ -368,47 +367,66 @@ void create_level(int index)
     level.count_z = level_layout.height;
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
 
-    robot = {};
+    robot = add_entity<Robot>(ENTITY_ROBOT);
+    robot->mesh = &mesh_robot;
+    robot->scale = 0.58f;
 
-    for (int i = 0; i < level.count_x * level.count_z; i++)
-    {
-        auto tile = &level.tiles[i];
-
-        int y     = level_layout.data[i * 3] / 64;
-        int state = level_layout.data[i * 3 + 1];
-        int kind  = level_layout.data[i * 3 + 2];
-
-        tile->y                  = y;
-        tile->original_y         = tile->y;
-        tile->display_y          = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
-        tile->color              = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
-
-        tile->is_goal            = kind == 64;
-        tile->detector_on_top    = kind == 128;
-        tile->box_on_top         = kind == 255;
-
-        tile->box_delta_x        = 0.0f;
-        tile->box_delta_z        = 0.0f;
-        tile->box_delta_velocity = 0.0f;
-        tile->activate_on_state  = state;
-        tile->lower              = kind != 200;
-
-        if (tile->is_goal)
+    for (int z = 0; z < level.count_z; z++)
+        for (int x = 0; x < level.count_x; x++)
         {
-            tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
-            level.goal_x = i % level.count_x;
-            level.goal_z = i / level.count_x;
-        }
+            int i = z * level.count_x + x;
+            auto tile = &level.tiles[i];
 
-        if (kind == 192)
-        {
-            robot.tile_x = i % level.count_x;
-            robot.tile_z = i / level.count_x;
+            int y         = level_layout.data[i * 3] / 64;
+            int frequency = level_layout.data[i * 3 + 1];
+            int kind      = level_layout.data[i * 3 + 2];
+
+            tile->y          = y;
+            tile->original_y = tile->y;
+            tile->display_y  = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
+            tile->color      = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
+            tile->frequency = frequency;
+            tile->lower     = kind != 200;
+
+            if (kind == 64)
+            {
+                goal = add_entity<Goal>(ENTITY_GOAL);
+                goal->tile_x = x;
+                goal->tile_z = z;
+                tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
+            }
+
+            if (kind == 128)
+            {
+                auto detector = add_entity<Detector>(ENTTIY_DETECTOR);
+                detector->mesh = &mesh_detector;
+                detector->scale = 0.4f;
+                detector->display_x = detector->tile_x = x;
+                detector->display_z = detector->tile_z = z;
+                detector->frequency = tile->frequency;
+                tile->frequency = 0;
+            }
+
+            tile->box = NULL;
+            if (kind == 255)
+            {
+                auto box = add_entity<Box>(ENTITY_BOX);
+                box->mesh = &mesh_box;
+                box->scale = 0.3f;
+                box->display_x = box->tile_x = x;
+                box->display_z = box->tile_z = z;
+                tile->box = box;
+            }
+
+            if (kind == 192)
+            {
+                robot->tile_x = x;
+                robot->tile_z = z;
+            }
         }
-    }
 
     int is_final;
-    sscanf(settings, "%d %d %d", &level.max_moves, &robot.angle, &is_final);
+    sscanf(settings, "%d %d %d", &level.max_moves, &robot->angle, &is_final);
     level.remaining_moves = level.max_moves;
     level.is_final = (bool) is_final;
 
@@ -416,27 +434,105 @@ void create_level(int index)
     free_image(&level_decor);
     free(settings);
 
-    animate_robot();
-
-    place_camera(true);
-    camera = target_camera;
-
     level.first_frame = true;
 }
 
-void approach_zero(float* var, float velocity)
+bool queue_left;
+bool queue_right;
+bool queue_up;
+bool queue_down;
+
+void update_entity(Entity* e)
 {
-    if (*var < 0.0f)
+    switch (e->kind)
     {
-        *var += delta_seconds * velocity;
-        if (*var >= 0.0f)
-            *var = 0.0;
+
+    case ENTITY_ROBOT:
+    {
+        if (robot->animating)
+        {
+            if (input_left)  { queue_left = true;  queue_right = false; queue_up = false; queue_down = false; }
+            if (input_right) { queue_left = false; queue_right = true;  queue_up = false; queue_down = false; }
+            if (input_up)    { queue_left = false; queue_right = false; queue_up = true;  queue_down = false; }
+            if (input_down)  { queue_left = false; queue_right = false; queue_up = false; queue_down = true;  }
+        }
+        else
+        {
+            if (queue_left)  { input_left  = true; queue_left  = false; }
+            if (queue_right) { input_right = true; queue_right = false; }
+            if (queue_up)    { input_up    = true; queue_up    = false; }
+            if (queue_down)  { input_down  = true; queue_down  = false; }
+        }
+
+        if (input_left)  rotate_robot( 1);
+        if (input_right) rotate_robot(-1);
+        if (input_up)    move_robot( 1);
+        if (input_down)  move_robot(-1);
+
+        input_left = input_right = input_up = input_down = false;
+
+        if (level.remaining_moves == 0)
+        {
+            level.is_fading_out = true;
+            level.fade = 0;
+            level.fade_velocity = 1.0f;
+            level.won = false;
+        }
+    } break;
+
+    case ENTITY_GOAL:
+    {
+        if (robot->tile_x == e->tile_x && robot->tile_z == e->tile_z)
+        {
+            level.is_fading_out = true;
+            level.fade = 0;
+            level.fade_velocity = 1.0f;
+            level.won = true;
+        }
+    } break;
+
+    case ENTTIY_DETECTOR:
+    {
+        auto detector = (Detector*) e;
+        auto tile = get_tile(e->tile_x, e->tile_z);
+
+        bool pressed = tile->box || (robot->tile_x == e->tile_x && robot->tile_z == e->tile_z);
+        if ( pressed && !detector->pressed) play_sound(&sound_detector_on);
+        if (!pressed &&  detector->pressed) play_sound(&sound_detector_off);
+        detector->pressed = pressed;
+
+        if (pressed)
+        {
+            frequencies[detector->frequency] = true;
+        }
+    } break;
+
+    default: break;
+
     }
-    if (*var > 0.0f)
+}
+
+void update_level()
+{
+    memset(frequencies, 0, sizeof(frequencies));
+
+    auto to_update = &level.entities[0];
+    while (to_update < level.next_entity)
     {
-        *var -= delta_seconds * velocity;
-        if (*var <= 0.0f)
-            *var = 0.0;
+        auto e = *(to_update++);
+        update_entity(e);
+    }
+
+    for (int i = 0; i < level.count_x * level.count_z; i++)
+    {
+        auto tile = &level.tiles[i];
+        if (!tile->frequency) continue;
+
+        tile->y = tile->original_y;
+        if (frequencies[tile->frequency])
+        {
+            tile->y += (tile->lower) ? -1 : 1;
+        }
     }
 }
 
@@ -447,44 +543,29 @@ void render_level()
         for (int z = 0; z < level.count_z; z++)
         {
             auto tile = get_tile(x, z);
-            float y = tile->display_y;
+
+            float desired = get_desired_tile_display_y(tile->y);
+            tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
+
             set_mesh_color_multiplier(tile->color);
-            render_mesh(&mesh_block, glm::vec3((float) x, y, (float) z), 0.0f);
+            render_mesh(&mesh_block, glm::vec3((float) x, tile->display_y, (float) z), 0.0f);
         }
     end_mesh();
 
     set_mesh_color_multiplier(glm::vec3(1.0f, 1.0f, 1.0f));
 
-    begin_mesh(&mesh_box);
-    for (int x = 0; x < level.count_x; x++)
-        for (int z = 0; z < level.count_z; z++)
-        {
-            auto tile = get_tile(x, z);
-            if (!tile->box_on_top) continue;
+    auto to_render = &level.entities[0];
+    while (to_render < level.next_entity)
+    {
+        auto e = *(to_render++);
+        if (!e->mesh) continue;
 
-            approach_zero(&tile->box_delta_x, tile->box_delta_velocity);
-            approach_zero(&tile->box_delta_z, tile->box_delta_velocity);
+        animate_entity(e);
 
-            float xx = x + 0.5f + tile->box_delta_x;
-            float zz = z + 0.5f + tile->box_delta_z;
-            float yy = tile->display_y;
-            render_mesh(&mesh_box, glm::vec3(xx, yy, zz), 0.0f, 0.3f);
-        }
-    end_mesh();
-
-    begin_mesh(&mesh_detector);
-    for (int x = 0; x < level.count_x; x++)
-        for (int z = 0; z < level.count_z; z++)
-        {
-            auto tile = get_tile(x, z);
-            if (!tile->detector_on_top) continue;
-
-            float xx = x + 0.5f;
-            float zz = z + 0.5f;
-            float yy = tile->display_y;
-            render_mesh(&mesh_detector, glm::vec3(xx, yy, zz), 0.0f, 0.4f);
-        }
-    end_mesh();
+        begin_mesh(e->mesh);
+        render_mesh(e->mesh, get_entity_display_position(e), e->display_angle, e->scale);
+        end_mesh();
+    }
 }
 
 void render_battery()
@@ -514,24 +595,16 @@ void render_battery()
     }
 }
 
-void render_effects()
-{
-    if (level.is_fading_out)
-    {
-        render_colored_quad(0, 0, window_width, window_height, glm::vec4(0.0f, 0.0f, 0.0f, level.fade));
-    }
-}
-
 void render_ui()
 {
     glDisable(GL_DEPTH_TEST);
 
     if (current_level_index == 0)
     {
-        v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
+        v2 robot_screen = world_to_screen(get_entity_display_position(robot) + glm::vec3(-0.5f, 0.0f, +0.5f));
         render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
 
-        v2 white_screen = world_to_screen(get_tile_display_position(level.goal_x, level.goal_z) + glm::vec3(0.5f, 0.0f, 0.5f));
+        v2 white_screen = world_to_screen(get_tile_display_position(goal->tile_x, goal->tile_z) + glm::vec3(0.5f, 0.0f, 0.5f));
         render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
     }
 
@@ -539,74 +612,30 @@ void render_ui()
 
     render_battery();
 
-    render_effects();
+    if (level.is_fading_out)
+    {
+        render_colored_quad(0, 0, window_width, window_height, glm::vec4(0.0f, 0.0f, 0.0f, level.fade));
+    }
 
     glEnable(GL_DEPTH_TEST);
 }
 
 void render_scene()
 {
+    if (level.first_frame)
+        animate_entity(robot);
+    place_camera();
+    if (level.first_frame)
+        camera = target_camera;
+
     light_direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.2f));
 
     perspective = glm::perspective(glm::radians(60.0f), (float) window_width / (float) window_height, 0.1f, 100.0f);
     view = glm::lookAt(camera, camera + camera_vector, glm::vec3(0.0f, 1.0f, 0.0f));
     perspective_view = perspective * view;
-    ortho = glm::ortho(0.0f, (float) window_width, 0.0f, (float) window_height);
 
     render_level();
-    render_robot();
     render_ui();
-}
-
-void update_tiles()
-{
-    bool previous_detector_states[256];
-    memcpy(previous_detector_states, detector_states, sizeof(detector_states));
-    memset(detector_states, 0, sizeof(detector_states));
-
-    for (int z = 0; z < level.count_z; z++)
-        for (int x = 0; x < level.count_x; x++)
-        {
-            auto tile = get_tile(x, z);
-            if (!tile->detector_on_top) continue;
-            {
-                if (tile->box_on_top || (robot.tile_x == x && robot.tile_z == z))
-                {
-                    detector_states[tile->activate_on_state] = true;
-                }
-            }
-        }
-
-    for (int i = 0; i < level.count_x * level.count_z; i++)
-    {
-        auto tile = &level.tiles[i];
-        if (!tile->detector_on_top)
-        {
-            tile->y = tile->original_y;
-            if (detector_states[tile->activate_on_state])
-            {
-                if (tile->lower)
-                    tile->y--;
-                else
-                    tile->y++;
-            }
-        }
-        float desired = get_desired_tile_display_y(tile->y);
-        tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
-    }
-
-    if (!level.first_frame)
-    {
-        bool play_on = false;
-        bool play_off = false;
-        for (int i = 0; i < sizeof(detector_states) / sizeof(detector_states[0]); i++)
-        {
-            if (detector_states[i] && !previous_detector_states[i]) play_on = true;
-            if (!detector_states[i] && previous_detector_states[i]) play_off = true;
-        }
-        if (play_on)  play_sound(&sound_detector_on);
-        if (play_off) play_sound(&sound_detector_off);
-    }
 }
 
 void frame()
@@ -620,6 +649,8 @@ void frame()
 
     delta_seconds = (double) delta / (double) counter_frequency;
     seconds_since_start += delta_seconds;
+
+    ortho = glm::ortho(0.0f, (float) window_width, 0.0f, (float) window_height);
 
     if (input_previous_level)
     {
@@ -650,36 +681,9 @@ void frame()
 
     if (state == STATE_PLAYING)
     {
-        if (level.is_fading_out)
-        {
-            animate_robot();
-        }
-        else
-        {
-            update_robot();
-        }
-        update_tiles();
-
-        place_camera(true);
-        render_scene();
-
         if (!level.is_fading_out)
-        {
-            if (robot.tile_x == level.goal_x && robot.tile_z == level.goal_z)
-            {
-                level.is_fading_out = true;
-                level.fade = 0;
-                level.fade_velocity = 1.0f;
-                level.won = true;
-            }
-            else if (level.remaining_moves == 0)
-            {
-                level.is_fading_out = true;
-                level.fade = 0;
-                level.fade_velocity = 1.0f;
-                level.won = false;
-            }
-        }
+            update_level();
+        render_scene();
 
         if (level.is_fading_out)
         {
