@@ -24,7 +24,9 @@ struct Tile
     float display_y;
     v3    color;
 
-    bool pickup;
+    bool box_on_top;
+    float box_delta_x;
+    float box_delta_z;
 };
 
 struct Level
@@ -141,16 +143,35 @@ void animate_robot()
     }
 }
 
-bool can_move_to_tile(int x, int z, bool extension)
+bool can_move_to_tile(int x, int z, bool extension, int vx, int vz)
 {
     if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
         return extension;
-    int y0 = get_tile(robot.tile_x, robot.tile_z)->y;
-    int y1 = get_tile(x, z)->y;
+    auto tile = get_tile(x, z);
+    auto robot_tile = get_tile(robot.tile_x, robot.tile_z);
+    int y0 = robot_tile->y;
+    int y1 = tile->y;
     if (y0 > y1)
         return extension;
     if (y0 < y1)
         return false;
+    if (tile->box_on_top)
+    {
+        int dx = x + vx;
+        int dz = z + vz;
+        if (dx < 0 || dx >= level.count_x || dz < 0 || dz >= level.count_z)
+            return false;
+        auto displacement_tile = get_tile(dx, dz);
+        if (y0 != displacement_tile->y)
+            return false;
+        if (displacement_tile->box_on_top)
+            return false;
+        tile->box_on_top = false;
+        displacement_tile->box_on_top = true;
+        displacement_tile->box_delta_x = -vx;
+        displacement_tile->box_delta_z = -vz;
+        return true;
+    }
     return true;
 }
 
@@ -174,11 +195,11 @@ void move_robot(int direction)
     int new_z = robot.tile_z + dz;
     float new_y = robot.display_y;
 
-    bool move = can_move_to_tile(new_x, new_z, false);
+    bool move = can_move_to_tile(new_x, new_z, false, dx, dz);
     if (move)
     {
         new_y = get_tile(new_x, new_z)->display_y;
-        move = can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true);
+        move = can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true, dx, dz);
     }
 
     float delta_move = 1.0f;
@@ -232,7 +253,7 @@ void rotate_robot(int plus_minus)
     float animation_angle = 90;
     robot.animation_time = 0.3;
 
-    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true);
+    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true, -dx2, -dz2);
     if (!turn)
     {
         animation_angle = 40;
@@ -240,7 +261,7 @@ void rotate_robot(int plus_minus)
     }
     else
     {
-        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true);
+        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true, dx, dz);
         if (!turn)
         {
             animation_angle = 110;
@@ -332,15 +353,10 @@ void create_level(int index)
     for (int i = 0; i < level.count_x * level.count_z; i++)
     {
         auto tile = &level.tiles[i];
-        tile->y         = level_layout.data[i * 3] / 64;
-        tile->display_y = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
-        tile->color     = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
-        tile->pickup    = (rand() % 30) == 0;
-        if (tile->pickup)
-        {
-            tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
-            tile->display_y += 0.08f;
-        }
+        tile->y          = level_layout.data[i * 3] / 64;
+        tile->display_y  = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
+        tile->color      = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
+        tile->box_on_top = level_layout.data[i * 3 + 2] ? true : false;
     }
 
     free_image(&level_layout);
@@ -353,6 +369,22 @@ void create_level(int index)
 
     place_camera(true);
     camera = target_camera;
+}
+
+void approach_zero(float* var, float velocity)
+{
+    if (*var < 0.0f)
+    {
+        *var += delta_seconds * velocity;
+        if (*var >= 0.0f)
+            *var = 0.0;
+    }
+    if (*var > 0.0f)
+    {
+        *var -= delta_seconds * velocity;
+        if (*var <= 0.0f)
+            *var = 0.0;
+    }
 }
 
 void render_level()
@@ -373,9 +405,15 @@ void render_level()
         for (int z = 0; z < level.count_z; z++)
         {
             auto tile = get_tile(x, z);
-            if (!tile->pickup) continue;
-            float y = tile->display_y;
-            render_mesh(&mesh_box, glm::vec3((float) x + 0.5f, y, (float) z + 0.5f), 0.0f, 0.3f);
+            if (!tile->box_on_top) continue;
+
+            approach_zero(&tile->box_delta_x, 3.0f);
+            approach_zero(&tile->box_delta_z, 3.0f);
+
+            float xx = x + 0.5f + tile->box_delta_x;
+            float zz = z + 0.5f + tile->box_delta_z;
+            float yy = tile->display_y;
+            render_mesh(&mesh_box, glm::vec3(xx, yy, zz), 0.0f, 0.3f);
         }
     end_mesh();
 }
