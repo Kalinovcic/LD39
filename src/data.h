@@ -3,6 +3,7 @@
 // meshes
 Mesh mesh_block;
 Mesh mesh_robot;
+Mesh mesh_box;
 Mesh mesh_pickup;
 
 // sounds
@@ -19,6 +20,7 @@ void load_data()
 {
     create_mesh("data/models/block.obj",  &mesh_block);
     create_mesh("data/models/robot.obj",  &mesh_robot);
+    create_mesh("data/models/box.obj",    &mesh_box);
     create_mesh("data/models/pickup.obj", &mesh_pickup);
 
     load_sound(&sound_robot_move[0], "data/audio/robot_move0.wav");

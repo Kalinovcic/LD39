@@ -254,3 +254,9 @@ void render_mesh(Mesh* mesh, v3 position, float orientation)
     auto model_matrix = glm::translate(position) * glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f));
     render_mesh(mesh, model_matrix);
 }
+
+void render_mesh(Mesh* mesh, v3 position, float orientation, float scale)
+{
+    auto model_matrix = glm::translate(position) * glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::scale(glm::vec3(scale));
+    render_mesh(mesh, model_matrix);
+}

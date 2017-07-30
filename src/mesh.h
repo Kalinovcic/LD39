@@ -37,3 +37,4 @@ void end_mesh();
 void set_mesh_color_multiplier(v3 color_multiplier);
 void render_mesh(Mesh* mesh, m4& model);
 void render_mesh(Mesh* mesh, v3 position, float orientation);
+void render_mesh(Mesh* mesh, v3 position, float orientation, float scale);

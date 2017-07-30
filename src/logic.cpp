@@ -141,6 +141,19 @@ void animate_robot()
     }
 }
 
+bool can_move_to_tile(int x, int z, bool extension)
+{
+    if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
+        return extension;
+    int y0 = get_tile(robot.tile_x, robot.tile_z)->y;
+    int y1 = get_tile(x, z)->y;
+    if (y0 > y1)
+        return extension;
+    if (y0 < y1)
+        return false;
+    return true;
+}
+
 void move_robot(int direction)
 {
     if (robot.animating) return;
@@ -161,13 +174,12 @@ void move_robot(int direction)
     int new_z = robot.tile_z + dz;
     float new_y = robot.display_y;
 
-    bool move = true;
-    if (new_x < 0 || new_x >= level.count_x || new_z < 0 || new_z >= level.count_z)
-        move = false;
-    else if (get_tile(robot.tile_x, robot.tile_z)->y != get_tile(new_x, new_z)->y)
-        move = false;
-    else
+    bool move = can_move_to_tile(new_x, new_z, false);
+    if (move)
+    {
         new_y = get_tile(new_x, new_z)->display_y;
+        move = can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true);
+    }
 
     float delta_move = 1.0f;
     if (move)
@@ -192,22 +204,64 @@ void move_robot(int direction)
     robot.velocity_z = dz * delta_move / robot.animation_time;
 }
 
+float correct_angle(int angle)
+{
+    if (angle < 0)
+        return 360 - (-angle % 360);
+    else
+        return angle % 360;
+}
+
 void rotate_robot(int plus_minus)
 {
     if (robot.animating) return;
-    robot.animating = true;
 
-    robot.angle += 90 * plus_minus;
+    static int DX[] = { -1,  0,  1,  0 };
+    static int DZ[] = {  0,  1,  0, -1 };
 
-    if (robot.angle < 0)
-        robot.angle = 360 - (-robot.angle % 360);
-    else
-        robot.angle = robot.angle % 360;
+    int orientation = robot.angle / 90;
+    int dx = DX[orientation];
+    int dz = DZ[orientation];
 
+    int new_angle = correct_angle(robot.angle + 90 * plus_minus);
+
+    int orientation2 = new_angle / 90;
+    int dx2 = DX[orientation2];
+    int dz2 = DZ[orientation2];
+
+    float animation_angle = 90;
     robot.animation_time = 0.3;
-    robot.velocity_angle = plus_minus * 90 * 1.0 / robot.animation_time;
 
-    play_sound(&sound_robot_turn);
+    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true);
+    if (!turn)
+    {
+        animation_angle = 40;
+        robot.animation_time *= 40.0 / 90.0;
+    }
+    else
+    {
+        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true);
+        if (!turn)
+        {
+            animation_angle = 110;
+            robot.animation_time *= 110.0 / 90.0;
+        }
+    }
+
+    if (turn)
+    {
+        play_sound(&sound_robot_turn);
+        robot.angle = new_angle;
+    }
+    else
+    {
+        play_sound(&sound_robot_hit);
+        robot.animation_reverses = true;
+        robot.animation_reverse_time = robot.animation_time / 2;
+    }
+
+    robot.animating = true;
+    robot.velocity_angle = plus_minus * animation_angle * 1.0 / robot.animation_time;
 }
 
 bool queue_left;
@@ -314,14 +368,14 @@ void render_level()
         }
     end_mesh();
 
-    begin_mesh(&mesh_pickup);
+    begin_mesh(&mesh_box);
     for (int x = 0; x < level.count_x; x++)
         for (int z = 0; z < level.count_z; z++)
         {
             auto tile = get_tile(x, z);
             if (!tile->pickup) continue;
             float y = tile->display_y;
-            render_mesh(&mesh_pickup, glm::vec3((float) x + 0.5f, y + sin(seconds_since_start) * 0.1f, (float) z + 0.5f), seconds_since_start * 0.4f);
+            render_mesh(&mesh_box, glm::vec3((float) x + 0.5f, y, (float) z + 0.5f), 0.0f, 0.3f);
         }
     end_mesh();
 }
