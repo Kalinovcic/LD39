@@ -53,6 +53,7 @@ struct Level
     float fade;
     float fade_velocity;
 
+    bool first_frame;
     bool is_final;
     bool won;
 };
@@ -419,6 +420,8 @@ void create_level(int index)
 
     place_camera(true);
     camera = target_camera;
+
+    level.first_frame = true;
 }
 
 void approach_zero(float* var, float velocity)
@@ -592,15 +595,18 @@ void update_tiles()
         tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
     }
 
-    bool play_on = false;
-    bool play_off = false;
-    for (int i = 0; i < sizeof(detector_states) / sizeof(detector_states[0]); i++)
+    if (!level.first_frame)
     {
-        play_on = detector_states[i] && !previous_detector_states[i];
-        play_off = !detector_states[i] && previous_detector_states[i];
+        bool play_on = false;
+        bool play_off = false;
+        for (int i = 0; i < sizeof(detector_states) / sizeof(detector_states[0]); i++)
+        {
+            if (detector_states[i] && !previous_detector_states[i]) play_on = true;
+            if (!detector_states[i] && previous_detector_states[i]) play_off = true;
+        }
+        if (play_on)  play_sound(&sound_detector_on);
+        if (play_off) play_sound(&sound_detector_off);
     }
-    if (play_on)  play_sound(&sound_detector_on);
-    if (play_off) play_sound(&sound_detector_off);
 }
 
 void frame()
@@ -686,5 +692,7 @@ void frame()
                     input_reset = true;
             }
         }
+
+        level.first_frame = false;
     }
 }
