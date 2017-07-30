@@ -31,7 +31,8 @@ struct Tile
     float box_delta_velocity;
 
     bool detector_on_top;
-    int lower_on_state;
+    int activate_on_state;
+    bool lower;
 
     bool is_goal;
 };
@@ -51,6 +52,9 @@ struct Level
     bool is_fading_out;
     float fade;
     float fade_velocity;
+
+    bool is_final;
+    bool won;
 };
 
 struct Robot
@@ -273,8 +277,8 @@ void rotate_robot(int plus_minus)
         turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true, dx, dz, 0.3f);
         if (!turn)
         {
-            animation_angle = 110;
-            robot.animation_time *= 110.0 / 90.0;
+            animation_angle = 90;
+            robot.animation_time *= 90.0 / 90.0;
         }
     }
 
@@ -364,7 +368,6 @@ void create_level(int index)
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
 
     robot = {};
-    robot.angle = 180;
 
     for (int i = 0; i < level.count_x * level.count_z; i++)
     {
@@ -386,7 +389,8 @@ void create_level(int index)
         tile->box_delta_x        = 0.0f;
         tile->box_delta_z        = 0.0f;
         tile->box_delta_velocity = 0.0f;
-        tile->lower_on_state     = state;
+        tile->activate_on_state  = state;
+        tile->lower              = kind != 200;
 
         if (tile->is_goal)
         {
@@ -402,8 +406,10 @@ void create_level(int index)
         }
     }
 
-    sscanf(settings, "%d", &level.max_moves);
+    int is_final;
+    sscanf(settings, "%d %d %d", &level.max_moves, &robot.angle, &is_final);
     level.remaining_moves = level.max_moves;
+    level.is_final = (bool) is_final;
 
     free_image(&level_layout);
     free_image(&level_decor);
@@ -499,7 +505,10 @@ void render_battery()
     sprintf(battery_string, "%d", level.remaining_moves);
     render_string(&font, 48.0f, 50.0f, 1.0f, 0.5f, battery_string, glm::vec3(0.0f, 0.0f, 0.0f), false);
 
-    render_string(&font, 100, 50, 24.0f / 48.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
+    if (current_level_index == 0)
+    {
+        render_string(&font, 100, 50, 24.0f / 48.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
+    }
 }
 
 void render_effects()
@@ -514,13 +523,19 @@ void render_ui()
 {
     glDisable(GL_DEPTH_TEST);
 
-    v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
-    render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
+    if (current_level_index == 0)
+    {
+        v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
+        render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
 
-    v2 white_screen = world_to_screen(get_tile_display_position(level.goal_x, level.goal_z) + glm::vec3(0.5f, 0.0f, 0.5f));
-    render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
+        v2 white_screen = world_to_screen(get_tile_display_position(level.goal_x, level.goal_z) + glm::vec3(0.5f, 0.0f, 0.5f));
+        render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
+    }
+
+    render_string(&font, window_width - 80.00f, 8.0f, 24.0f / 48.0f, 0.5f, (char*) "Press R to restart", glm::vec3(1.0f, 1.0f, 1.0f));
 
     render_battery();
+
     render_effects();
 
     glEnable(GL_DEPTH_TEST);
@@ -554,7 +569,7 @@ void update_tiles()
             {
                 if (tile->box_on_top || (robot.tile_x == x && robot.tile_z == z))
                 {
-                    detector_states[tile->lower_on_state] = true;
+                    detector_states[tile->activate_on_state] = true;
                 }
             }
         }
@@ -565,8 +580,13 @@ void update_tiles()
         if (!tile->detector_on_top)
         {
             tile->y = tile->original_y;
-            if (detector_states[tile->lower_on_state])
-                tile->y--;
+            if (detector_states[tile->activate_on_state])
+            {
+                if (tile->lower)
+                    tile->y--;
+                else
+                    tile->y++;
+            }
         }
         float desired = get_desired_tile_display_y(tile->y);
         tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
@@ -604,7 +624,14 @@ void frame()
 
     if (input_next_level)
     {
-        current_level_index++;
+        if (level.is_final)
+        {
+            // @Incomplete
+        }
+        else
+        {
+            current_level_index++;
+        }
         input_next_level = false;
         input_reset = true;
     }
@@ -630,15 +657,22 @@ void frame()
         place_camera(true);
         render_scene();
 
-        if (robot.tile_x == level.goal_x && robot.tile_z == level.goal_z)
+        if (!level.is_fading_out)
         {
-            input_next_level = true;
-        }
-        else if (level.remaining_moves == 0 && !level.is_fading_out)
-        {
-            level.is_fading_out = true;
-            level.fade = 0;
-            level.fade_velocity = 1.0f;
+            if (robot.tile_x == level.goal_x && robot.tile_z == level.goal_z)
+            {
+                level.is_fading_out = true;
+                level.fade = 0;
+                level.fade_velocity = 1.0f;
+                level.won = true;
+            }
+            else if (level.remaining_moves == 0)
+            {
+                level.is_fading_out = true;
+                level.fade = 0;
+                level.fade_velocity = 1.0f;
+                level.won = false;
+            }
         }
 
         if (level.is_fading_out)
@@ -646,7 +680,10 @@ void frame()
             level.fade += delta_seconds * level.fade_velocity;
             if (level.fade >= 1.0f)
             {
-                input_reset = true;
+                if (level.won)
+                    input_next_level = true;
+                else
+                    input_reset = true;
             }
         }
     }
