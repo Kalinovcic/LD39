@@ -117,6 +117,43 @@ void load_color_and_texture_shaders()
     texture_u_font  = glGetUniformLocation(texture_program, "tex");
 }
 
+void render_colored_quad(float x0, float y0, float x1, float y1, v4 color)
+{
+    v2 vertices[] = {
+        { x0, y0 },
+        { x1, y0 },
+        { x1, y1 },
+        { x1, y1 },
+        { x0, y1 },
+        { x0, y0 },
+    };
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    glUseProgram(color_program);
+    glUniformMatrix4fv(color_u_ortho, 1, GL_FALSE, (GLfloat*) &ortho);
+    glUniform4fv(color_u_color, 1, (GLfloat*) &color);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    {
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(v2), (void*)(0 * sizeof(float)));
+        glEnableVertexAttribArray(0);
+
+        glDrawArrays(GL_TRIANGLES, 0, sizeof(vertices) / sizeof(vertices[0]));
+
+        glDisableVertexAttribArray(0);
+    }
+
+    glDeleteBuffers(1, &vbo);
+
+    glDisable(GL_BLEND);
+}
+
 GLuint load_texture(const char* path)
 {
     Image image;
@@ -201,7 +238,7 @@ static void get_string_vertices(std::vector<Texture_Vertex>& vertices, v2* min, 
         if (*string == '\n')
         {
             cx = 0;
-            cy += 32.0 * 0.9;
+            cy += 32.0;
         }
         if ((u8) *string >= 32 && (u8) *string < 128)
         {

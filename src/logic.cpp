@@ -14,7 +14,6 @@ enum State
 };
 
 State state;
-double state_time;
 
 bool previous_detector_states[256];
 bool detector_states[256];
@@ -29,9 +28,12 @@ struct Tile
     bool box_on_top;
     float box_delta_x;
     float box_delta_z;
+    float box_delta_velocity;
 
     bool detector_on_top;
     int lower_on_state;
+
+    bool is_goal;
 };
 
 struct Level
@@ -39,6 +41,16 @@ struct Level
     Tile* tiles;
     int count_x;
     int count_z;
+
+    int goal_x;
+    int goal_z;
+
+    int max_moves;
+    int remaining_moves;
+
+    bool is_fading_out;
+    float fade;
+    float fade_velocity;
 };
 
 struct Robot
@@ -60,6 +72,7 @@ struct Robot
     float velocity_angle;
 };
 
+int current_level_index = 0;
 Level level;
 Robot robot;
 
@@ -95,7 +108,7 @@ v3 get_robot_display_position()
 
 void place_camera(bool use_desired = false)
 {
-    camera_vector = glm::vec3(1.0f, -1.3, -1.0f);
+    camera_vector = glm::vec3(1.0f, -1.6, -1.0f);
     target_camera = get_robot_display_position();
     if (use_desired)
         target_camera.y = get_desired_tile_display_y(get_tile(robot.tile_x, robot.tile_z)->y);
@@ -142,7 +155,7 @@ void animate_robot()
     }
 }
 
-bool can_move_to_tile(int x, int z, bool extension, int vx, int vz)
+bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
 {
     if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
         return extension;
@@ -169,6 +182,7 @@ bool can_move_to_tile(int x, int z, bool extension, int vx, int vz)
         displacement_tile->box_on_top = true;
         displacement_tile->box_delta_x = -vx;
         displacement_tile->box_delta_z = -vz;
+        displacement_tile->box_delta_velocity = 1.0f / vv;
         return true;
     }
     return true;
@@ -193,8 +207,8 @@ void move_robot(int direction)
     int new_x = robot.tile_x + dx;
     int new_z = robot.tile_z + dz;
 
-    bool move = can_move_to_tile(new_x, new_z, false, dx, dz) &&
-                can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true, dx, dz);;
+    bool move = can_move_to_tile(new_x, new_z, false, dx, dz, 0.5f) &&
+                can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true, dx, dz, 0.5f);
 
     float delta_move = 1.0f;
     if (move)
@@ -203,6 +217,8 @@ void move_robot(int direction)
         robot.tile_x = new_x;
         robot.tile_z = new_z;
         robot.animation_time = 0.5;
+
+        level.remaining_moves--;
     }
     else
     {
@@ -246,7 +262,7 @@ void rotate_robot(int plus_minus)
     float animation_angle = 90;
     robot.animation_time = 0.3;
 
-    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true, -dx2, -dz2);
+    bool turn = can_move_to_tile(robot.tile_x - dx2 - dx, robot.tile_z - dz2 - dz, true, -dx2, -dz2, 0.3f);
     if (!turn)
     {
         animation_angle = 40;
@@ -254,7 +270,7 @@ void rotate_robot(int plus_minus)
     }
     else
     {
-        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true, dx, dz);
+        turn = can_move_to_tile(robot.tile_x - dx2, robot.tile_z - dz2, true, dx, dz, 0.3f);
         if (!turn)
         {
             animation_angle = 110;
@@ -335,31 +351,64 @@ void create_level(int index)
     load_image(path, &level_layout);
     sprintf(path, "data/levels/%ddecor.png", index);
     load_image(path, &level_decor);
+    sprintf(path, "data/levels/%dsettings.txt", index);
+    auto settings = read_all_bytes_from_file(path, true).data;
+
+    assert(level_layout.width  == level_decor.width);
+    assert(level_layout.height == level_decor.height);
+
+    level.is_fading_out = false;
 
     level.count_x = level_layout.width;
     level.count_z = level_layout.height;
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
 
+    robot = {};
+    robot.angle = 180;
+
     for (int i = 0; i < level.count_x * level.count_z; i++)
     {
         auto tile = &level.tiles[i];
-        tile->y               = level_layout.data[i * 3] / 64;
-        tile->original_y      = tile->y;
-        tile->display_y       = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
-        tile->color           = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
-        tile->box_on_top      = level_layout.data[i * 3 + 2] == 255;
-        tile->box_delta_x     = 0.0f;
-        tile->box_delta_z     = 0.0f;
-        tile->detector_on_top = level_layout.data[i * 3 + 2] == 128;
-        tile->lower_on_state  = level_layout.data[i * 3 + 1];
+
+        int y     = level_layout.data[i * 3] / 64;
+        int state = level_layout.data[i * 3 + 1];
+        int kind  = level_layout.data[i * 3 + 2];
+
+        tile->y                  = y;
+        tile->original_y         = tile->y;
+        tile->display_y          = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
+        tile->color              = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
+
+        tile->is_goal            = kind == 64;
+        tile->detector_on_top    = kind == 128;
+        tile->box_on_top         = kind == 255;
+
+        tile->box_delta_x        = 0.0f;
+        tile->box_delta_z        = 0.0f;
+        tile->box_delta_velocity = 0.0f;
+        tile->lower_on_state     = state;
+
+        if (tile->is_goal)
+        {
+            tile->color = glm::vec3(1.0f, 1.0f, 1.0f);
+            level.goal_x = i % level.count_x;
+            level.goal_z = i / level.count_x;
+        }
+
+        if (kind == 192)
+        {
+            robot.tile_x = i % level.count_x;
+            robot.tile_z = i / level.count_x;
+        }
     }
+
+    sscanf(settings, "%d", &level.max_moves);
+    level.remaining_moves = level.max_moves;
 
     free_image(&level_layout);
     free_image(&level_decor);
+    free(settings);
 
-    robot.tile_x = level.count_x / 2;
-    robot.tile_z = level.count_z / 2;
-    robot.angle = 180;
     animate_robot();
 
     place_camera(true);
@@ -404,8 +453,8 @@ void render_level()
             auto tile = get_tile(x, z);
             if (!tile->box_on_top) continue;
 
-            approach_zero(&tile->box_delta_x, 3.0f);
-            approach_zero(&tile->box_delta_z, 3.0f);
+            approach_zero(&tile->box_delta_x, tile->box_delta_velocity);
+            approach_zero(&tile->box_delta_z, tile->box_delta_velocity);
 
             float xx = x + 0.5f + tile->box_delta_x;
             float zz = z + 0.5f + tile->box_delta_z;
@@ -434,7 +483,7 @@ void render_battery()
     auto battery_empty_color = glm::vec3(207.0f / 255.0f, 216.0f / 255.0f, 220.0f / 255.0f);
     auto battery_full_color  = glm::vec3(139.0f / 255.0f, 195.0f / 255.0f,  74.0f / 255.0f);
 
-    float a0 = sin(seconds_since_start) * 0.5 + 0.5;
+    float a0 = (float) level.remaining_moves / (float) level.max_moves;
     float a1 = 1.0 - a0;
 
     float x = 0.0;
@@ -447,10 +496,18 @@ void render_battery()
     render_texture(texture_battery, x, y1, x + s, y1 + s * a1, 0, a1, 1,  0, battery_empty_color);
 
     char battery_string[8];
-    sprintf(battery_string, "%d", (int)((sin(seconds_since_start) * 0.5 + 0.5) * 60));
+    sprintf(battery_string, "%d", level.remaining_moves);
     render_string(&font, 48.0f, 50.0f, 1.0f, 0.5f, battery_string, glm::vec3(0.0f, 0.0f, 0.0f), false);
 
     render_string(&font, 100, 50, 24.0f / 48.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
+}
+
+void render_effects()
+{
+    if (level.is_fading_out)
+    {
+        render_colored_quad(0, 0, window_width, window_height, glm::vec4(0.0f, 0.0f, 0.0f, level.fade));
+    }
 }
 
 void render_ui()
@@ -460,10 +517,11 @@ void render_ui()
     v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
     render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
 
-    v2 white_screen = world_to_screen(get_tile_display_position(12, 3) + glm::vec3(0.5f, 0.0f, 0.5f));
+    v2 white_screen = world_to_screen(get_tile_display_position(level.goal_x, level.goal_z) + glm::vec3(0.5f, 0.0f, 0.5f));
     render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
 
     render_battery();
+    render_effects();
 
     glEnable(GL_DEPTH_TEST);
 }
@@ -537,18 +595,59 @@ void frame()
     delta_seconds = (double) delta / (double) counter_frequency;
     seconds_since_start += delta_seconds;
 
+    if (input_previous_level)
+    {
+        current_level_index--;
+        input_previous_level = false;
+        input_reset = true;
+    }
+
+    if (input_next_level)
+    {
+        current_level_index++;
+        input_next_level = false;
+        input_reset = true;
+    }
+
     if (input_reset)
     {
         input_reset = 0;
-        create_level(0);
+        create_level(current_level_index);
     }
 
     if (state == STATE_PLAYING)
     {
-        update_robot();
+        if (level.is_fading_out)
+        {
+            animate_robot();
+        }
+        else
+        {
+            update_robot();
+        }
         update_tiles();
 
         place_camera(true);
         render_scene();
+
+        if (robot.tile_x == level.goal_x && robot.tile_z == level.goal_z)
+        {
+            input_next_level = true;
+        }
+        else if (level.remaining_moves == 0 && !level.is_fading_out)
+        {
+            level.is_fading_out = true;
+            level.fade = 0;
+            level.fade_velocity = 1.0f;
+        }
+
+        if (level.is_fading_out)
+        {
+            level.fade += delta_seconds * level.fade_velocity;
+            if (level.fade >= 1.0f)
+            {
+                input_reset = true;
+            }
+        }
     }
 }

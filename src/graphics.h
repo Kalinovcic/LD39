@@ -20,6 +20,8 @@ void free_image(Image* image);
 
 void load_color_and_texture_shaders();
 
+void render_colored_quad(float x0, float y0, float x1, float y1, v4 color);
+
 GLuint load_texture(const char* path);
 void render_texture(GLuint texture, float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1, v3 color);
 
