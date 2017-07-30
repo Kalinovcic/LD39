@@ -429,6 +429,45 @@ void render_level()
     end_mesh();
 }
 
+void render_battery()
+{
+    auto battery_empty_color = glm::vec3(207.0f / 255.0f, 216.0f / 255.0f, 220.0f / 255.0f);
+    auto battery_full_color  = glm::vec3(139.0f / 255.0f, 195.0f / 255.0f,  74.0f / 255.0f);
+
+    float a0 = sin(seconds_since_start) * 0.5 + 0.5;
+    float a1 = 1.0 - a0;
+
+    float x = 0.0;
+    float s = 100.0f;
+
+    float y0 = 10.0f;
+    float y1 = y0 + a0 * s;
+
+    render_texture(texture_battery, x, y0, x + s, y0 + s * a0, 0,  1, 1, a1, battery_full_color);
+    render_texture(texture_battery, x, y1, x + s, y1 + s * a1, 0, a1, 1,  0, battery_empty_color);
+
+    char battery_string[8];
+    sprintf(battery_string, "%d", (int)((sin(seconds_since_start) * 0.5 + 0.5) * 60));
+    render_string(&font, 48.0f, 50.0f, 1.0f, 0.5f, battery_string, glm::vec3(0.0f, 0.0f, 0.0f), false);
+
+    render_string(&font, 100, 50, 24.0f / 48.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
+}
+
+void render_ui()
+{
+    glDisable(GL_DEPTH_TEST);
+
+    v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
+    render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
+
+    v2 white_screen = world_to_screen(get_tile_display_position(12, 3) + glm::vec3(0.5f, 0.0f, 0.5f));
+    render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
+
+    render_battery();
+
+    glEnable(GL_DEPTH_TEST);
+}
+
 void render_scene()
 {
     light_direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.2f));
@@ -440,18 +479,7 @@ void render_scene()
 
     render_level();
     render_robot();
-
-    glDisable(GL_DEPTH_TEST);
-
-    v2 robot_screen = world_to_screen(get_robot_display_position() + glm::vec3(-0.5f, 0.0f, +0.5f));
-    render_string(&font, robot_screen.x, robot_screen.y - 26.0f, 24.0f / 32.0f, 0.5f, (char*) "Move with arrows or WASD.", glm::vec3(1.0f, 1.0f, 1.0f));
-
-    v2 white_screen = world_to_screen(get_tile_display_position(12, 3) + glm::vec3(0.5f, 0.0f, 0.5f));
-    render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 32.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
-
-    render_string(&font, 100, 100, 24.0f / 32.0f, 0.0f, (char*) "Some actions drain power.\nDon't let it run out!", glm::vec3(1.0f, 1.0f, 1.0f));
-
-    glEnable(GL_DEPTH_TEST);
+    render_ui();
 }
 
 void update_tiles()
@@ -508,6 +536,12 @@ void frame()
 
     delta_seconds = (double) delta / (double) counter_frequency;
     seconds_since_start += delta_seconds;
+
+    if (input_reset)
+    {
+        input_reset = 0;
+        create_level(0);
+    }
 
     if (state == STATE_PLAYING)
     {

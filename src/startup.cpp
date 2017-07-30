@@ -17,7 +17,7 @@ void init_opengl()
     glDepthMask(true);
 
     load_mesh_shader();
-    load_font_shader();
+    load_color_and_texture_shaders();
 }
 
 void main_loop(void* unused)
@@ -51,7 +51,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     init_audio_system();
 
     load_data();
-    create_level(0);
+
+    input_reset = true;
 
 #if WEB
     emscripten_set_main_loop_arg(main_loop, NULL, -1, 1);

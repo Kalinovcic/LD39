@@ -13,6 +13,9 @@ Sound sound_robot_hit;
 Sound sound_detector_on;
 Sound sound_detector_off;
 
+// textures
+GLuint texture_battery;
+
 // fonts
 Font font;
 
@@ -32,6 +35,8 @@ void load_data()
     load_sound(&sound_robot_hit,     "data/audio/robot_hit.wav");
     load_sound(&sound_detector_on,   "data/audio/detector_on.wav");
     load_sound(&sound_detector_off,  "data/audio/detector_off.wav");
+
+    texture_battery = load_texture("data/textures/battery.png");
 
     load_font("data/fonts/NotoSans-Regular.ttf", &font);
 }
