@@ -21,7 +21,9 @@ enum Entity_Kind
 {
     ENTITY_ROBOT,
     ENTITY_GOAL,
-    ENTTIY_DETECTOR,
+    ENTITY_DETECTOR,
+    ENTITY_SPLITTER,
+    ENTITY_MERGER,
     ENTITY_BOX,
     ENTITY_LONG_BOX,
 };
@@ -29,6 +31,7 @@ enum Entity_Kind
 struct Entity
 {
     Entity_Kind kind;
+    int index;
 
     int tile_x;
     int tile_z;
@@ -61,6 +64,10 @@ struct Detector: Entity
     bool pressed;
 };
 
+struct Splitter: Entity {};
+
+struct Merger: Entity {};
+
 struct Box: Entity {};
 
 struct Long_Box: Box {};
@@ -79,6 +86,8 @@ struct Tile
     bool lower;
 };
 
+constexpr int MAX_ENTITIES = 64;
+
 struct Level
 {
     Tile* tiles;
@@ -96,8 +105,7 @@ struct Level
     bool is_final;
     bool won;
 
-    Entity* entities[128];
-    Entity** next_entity;
+    Entity* entities[MAX_ENTITIES];
 };
 
 int current_level_index = 0;
@@ -106,13 +114,26 @@ Robot* robot;
 Goal* goal;
 
 template <typename T>
-inline T* add_entity(Entity_Kind kind)
+T* add_entity(Entity_Kind kind)
 {
-    auto e = (T*) malloc(sizeof(T));
-    *(level.next_entity++) = e;
-    *e = {};
-    e->kind = kind;
-    return e;
+    for (int i = 0; i < MAX_ENTITIES; i++)
+        if (!level.entities[i])
+        {
+            auto e = (T*) malloc(sizeof(T));
+            *e = {};
+            e->kind = kind;
+            e->index = i;
+            level.entities[i] = e;
+            return e;
+        }
+    critical("Ran out of entity slots!");
+    return NULL;
+}
+
+void remove_entity(Entity* e)
+{
+    level.entities[e->index] = NULL;
+    free(e);
 }
 
 inline Tile* get_tile(int x, int z)
@@ -586,10 +607,12 @@ void create_level(int index)
 {
     if (level.tiles) free(level.tiles);
 
-    Entity** to_delete = &level.entities[0];
-    while (to_delete < level.next_entity)
-        free(*(to_delete++));
-    level.next_entity = &level.entities[0];
+    for (int i = 0; i < MAX_ENTITIES; i++)
+        if (level.entities[i])
+        {
+            free(level.entities[i]);
+            level.entities[i] = NULL;
+        }
 
     char path[128];
     Image level_layout, level_decor;
@@ -644,12 +667,36 @@ void create_level(int index)
 
             if (kind == 128)
             {
-                auto detector = add_entity<Detector>(ENTTIY_DETECTOR);
+                auto detector = add_entity<Detector>(ENTITY_DETECTOR);
                 detector->mesh = &mesh_detector;
                 detector->scale = 0.4f;
                 detector->display_x = detector->tile_x = x;
                 detector->display_z = detector->tile_z = z;
                 detector->frequency = tile->frequency;
+                tile->frequency = 0;
+            }
+
+            if (kind >= 130 && kind < 134)
+            {
+                auto splitter = add_entity<Splitter>(ENTITY_SPLITTER);
+                splitter->mesh = &mesh_splitter;
+                splitter->scale = 0.4f;
+                splitter->extended = true;
+                splitter->display_x = splitter->tile_x = x;
+                splitter->display_z = splitter->tile_z = z;
+                splitter->display_angle = splitter->angle = (kind - 130) * 90;
+                tile->frequency = 0;
+            }
+
+            if (kind >= 140 && kind < 144)
+            {
+                auto merger = add_entity<Merger>(ENTITY_MERGER);
+                merger->mesh = &mesh_merger;
+                merger->scale = 0.4f;
+                merger->extended = true;
+                merger->display_x = merger->tile_x = x;
+                merger->display_z = merger->tile_z = z;
+                merger->display_angle = merger->angle = (kind - 140) * 90;
                 tile->frequency = 0;
             }
 
@@ -659,7 +706,7 @@ void create_level(int index)
                 robot->tile_z = z;
             }
 
-            if (kind == 120)
+            if (kind >= 120 && kind < 124)
             {
                 auto box = add_entity<Long_Box>(ENTITY_LONG_BOX);
                 box->mesh = &mesh_long_box;
@@ -667,6 +714,7 @@ void create_level(int index)
                 box->extended = true;
                 box->display_x = box->tile_x = x;
                 box->display_z = box->tile_z = z;
+                box->display_angle = box->angle = (kind - 120) * 90;
                 tile->box = box;
                 get_tile(x - DX[0], z - DZ[0])->box = box;
             }
@@ -706,6 +754,8 @@ void update_entity(Entity* e)
 
     case ENTITY_ROBOT:
     {
+        auto robot = (Robot*) e;
+
         if (robot->animating)
         {
             if (input_left)  { queue_left = true;  queue_right = false; queue_up = false; queue_down = false; }
@@ -755,7 +805,7 @@ void update_entity(Entity* e)
         }
     } break;
 
-    case ENTTIY_DETECTOR:
+    case ENTITY_DETECTOR:
     {
         auto detector = (Detector*) e;
         auto tile = get_tile(e->tile_x, e->tile_z);
@@ -771,6 +821,62 @@ void update_entity(Entity* e)
         }
     } break;
 
+    case ENTITY_SPLITTER:
+    case ENTITY_MERGER:
+    {
+        int vx, vz;
+        angle_to_xz(e->angle, &vx, &vz);
+
+        auto tile0 = get_tile(e->tile_x,      e->tile_z     );
+        auto tile1 = get_tile(e->tile_x - vx, e->tile_z - vz);
+        auto box0 = tile0->box;
+        auto box1 = tile1->box;
+        if (!box0 || !box1) break;
+        if (box0->animating || box1->animating) break;
+
+        if (e->kind == ENTITY_SPLITTER)
+        {
+            if (box0 != box1) break;
+
+            remove_entity(box0);
+
+            auto box = add_entity<Box>(ENTITY_BOX);
+            box->mesh = &mesh_box;
+            box->scale = 0.3f;
+            box->display_x = box->tile_x = e->tile_x;
+            box->display_z = box->tile_z = e->tile_z;
+            tile0->box = box;
+
+            box = add_entity<Box>(ENTITY_BOX);
+            box->mesh = &mesh_box;
+            box->scale = 0.3f;
+            box->display_x = box->tile_x = e->tile_x - vx;
+            box->display_z = box->tile_z = e->tile_z - vz;
+            tile1->box = box;
+
+            play_sound(&sound_poof);
+        }
+        else if (e->kind == ENTITY_MERGER)
+        {
+            if (box0 == box1) break;
+
+            remove_entity(box0);
+            remove_entity(box1);
+
+            auto box = add_entity<Long_Box>(ENTITY_LONG_BOX);
+            box->mesh = &mesh_long_box;
+            box->scale = 0.3f;
+            box->extended = true;
+            box->display_x = box->tile_x = e->tile_x;
+            box->display_z = box->tile_z = e->tile_z;
+            box->display_angle = box->angle = e->angle;
+            tile0->box = box;
+            tile1->box = box;
+
+            play_sound(&sound_poof);
+        }
+    } break;
+
     default: break;
 
     }
@@ -780,12 +886,9 @@ void update_level()
 {
     memset(frequencies, 0, sizeof(frequencies));
 
-    auto to_update = &level.entities[0];
-    while (to_update < level.next_entity)
-    {
-        auto e = *(to_update++);
-        update_entity(e);
-    }
+    for (int i = 0; i < MAX_ENTITIES; i++)
+        if (level.entities[i])
+            update_entity(level.entities[i]);
 
     for (int i = 0; i < level.count_x * level.count_z; i++)
     {
@@ -819,18 +922,18 @@ void render_level()
 
     set_mesh_color_multiplier(glm::vec3(1.0f, 1.0f, 1.0f));
 
-    auto to_render = &level.entities[0];
-    while (to_render < level.next_entity)
-    {
-        auto e = *(to_render++);
-        if (!e->mesh) continue;
+    for (int i = 0; i < MAX_ENTITIES; i++)
+        if (level.entities[i])
+        {
+            auto e = level.entities[i];
+            if (!e->mesh) continue;
 
-        animate_entity(e);
+            animate_entity(e);
 
-        begin_mesh(e->mesh);
-        render_mesh(e->mesh, get_entity_display_position(e), e->display_angle, e->scale);
-        end_mesh();
-    }
+            begin_mesh(e->mesh);
+            render_mesh(e->mesh, get_entity_display_position(e), e->display_angle, e->scale);
+            end_mesh();
+        }
 }
 
 void render_battery()
