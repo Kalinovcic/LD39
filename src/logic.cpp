@@ -67,6 +67,7 @@ struct Long_Box: Box {};
 
 struct Tile
 {
+    bool  exists;
     int   y;
     int   original_y;
     float display_y;
@@ -223,7 +224,9 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
 
 bool in_bounds(int x, int z)
 {
-    return !(x < 0 || x >= level.count_x || z < 0 || z >= level.count_z);
+    if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
+        return false;
+    return get_tile(x, z)->exists;
 }
 
 bool try_to_occupy(Entity* e, int x, int z, bool extension, bool allow_bumping, int vx, int vz, float vv)
@@ -382,12 +385,12 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
 
             float animation_angle;
 
-            bool allow_hanging = !is_box;
-            bool turn = try_to_occupy(e, e->tile_x - dx2 - dx, e->tile_z - dz2 - dz, allow_hanging, true, -dx2, -dz2, vv);
+            bool turn = try_to_occupy(e, e->tile_x - dx2 - dx, e->tile_z - dz2 - dz, true, true, -dx2, -dz2, vv);
             if (!turn)
                 animation_angle = 40;
             else
             {
+                bool allow_hanging = !is_box;
                 turn = try_to_occupy(e, e->tile_x - dx2, e->tile_z - dz2, allow_hanging, true, dx, dz, vv);
                 if (!turn)
                     animation_angle = 90;
@@ -400,10 +403,6 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
                         animation_angle = 90;
                 }
             }
-
-            e->animating = true;
-            e->animation_time = animation_angle / 90.0 * vv;
-            e->velocity_angle = plus_minus * animation_angle / e->animation_time;
 
             if (turn)
             {
@@ -419,6 +418,10 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
 
                 e->angle = new_angle;
 
+                e->animating = true;
+                e->animation_time = animation_angle / 90.0 * vv;
+                e->velocity_angle = plus_minus * animation_angle / e->animation_time;
+
                 return true;
             }
             else
@@ -428,8 +431,11 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
                     play_sound(&sound_robot_hit);
                 }
 
+                e->animating = true;
+                e->animation_time = animation_angle / 90.0 * 0.2f;
                 e->animation_reverses = true;
                 e->animation_reverse_time = e->animation_time / 2;
+                e->velocity_angle = plus_minus * animation_angle / e->animation_time;
 
                 return false;
             }
@@ -616,16 +622,17 @@ void create_level(int index)
             int i = z * level.count_x + x;
             auto tile = &level.tiles[i];
 
-            int y         = level_layout.data[i * 3] / 64;
+            int y         = level_layout.data[i * 3 + 0];
             int frequency = level_layout.data[i * 3 + 1];
             int kind      = level_layout.data[i * 3 + 2];
 
-            tile->y          = y;
+            tile->exists     = y != 255;
+            tile->y          = y / 64;
             tile->original_y = tile->y;
             tile->display_y  = get_desired_tile_display_y(tile->y) - (rand() % 100 / 100.0 * 2.0 - 1.0) * 40.0;
             tile->color      = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
-            tile->frequency = frequency;
-            tile->lower     = kind != 200;
+            tile->frequency  = frequency;
+            tile->lower      = kind != 200;
 
             if (kind == 64)
             {
@@ -800,6 +807,7 @@ void render_level()
         for (int z = 0; z < level.count_z; z++)
         {
             auto tile = get_tile(x, z);
+            if (!tile->exists) continue;
 
             float desired = get_desired_tile_display_y(tile->y);
             tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
