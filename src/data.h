@@ -18,7 +18,9 @@ Sound sound_detector_off;
 Sound sound_poof;
 
 // textures
+GLuint texture_title;
 GLuint texture_battery;
+GLuint texture_level_icon[8];
 
 // fonts
 Font font;
@@ -44,7 +46,14 @@ void load_data()
     load_sound(&sound_detector_off,  "data/audio/detector_off.wav");
     load_sound(&sound_poof,          "data/audio/poof.wav");
 
+    texture_title   = load_texture("data/textures/title.png");
     texture_battery = load_texture("data/textures/battery.png");
+    for (int i = 0; i < sizeof(texture_level_icon) / sizeof(GLuint); i++)
+    {
+        char path[128];
+        sprintf(path, "data/levels/%dicon.png", i);
+        texture_level_icon[i] = load_texture(path);
+    }
 
     load_font("data/fonts/NotoSans-Regular.ttf", &font);
 }

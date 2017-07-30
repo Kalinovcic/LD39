@@ -157,12 +157,12 @@ void render_colored_quad(float x0, float y0, float x1, float y1, v4 color)
 GLuint load_texture(const char* path)
 {
     Image image;
-    load_image(path, &image, 1);
+    load_image(path, &image, 4);
 
     GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, image.width, image.height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, image.data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     free_image(&image);
@@ -218,18 +218,20 @@ void load_font(const char* path, Font* font)
 {
     auto source = read_all_bytes_from_file(path, false).data;
 
-    char* bitmap = (char*) malloc(512 * 512);
+    char* bitmap = (char*) malloc(512 * 512 * 4);
     stbtt_BakeFontBitmap((const u8*) source, 0, 48.0, (u8*) bitmap, 512, 512, 32, 96, font->chars);
+    for (int i = 512 * 512 - 1; i >= 0; i--)
+        bitmap[i * 4 + 0] = bitmap[i * 4 + 1] = bitmap[i * 4 + 2] = bitmap[i * 4 + 3] = bitmap[i];
     free(source);
 
     glGenTextures(1, &font->texture);
     glBindTexture(GL_TEXTURE_2D, font->texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 512, 512, 0, GL_ALPHA, GL_UNSIGNED_BYTE, bitmap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 512, 512, 0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     free(bitmap);
 }
 
-static void get_string_vertices(std::vector<Texture_Vertex>& vertices, v2* min, v2* max, Font* font, float x, float y, float scale, char* string)
+static void get_string_vertices(std::vector<Texture_Vertex>& vertices, v2* min, v2* max, Font* font, float x, float y, float scale, char* string, float line_spacing)
 {
     float cx = 0.0;
     float cy = 0.0;
@@ -238,7 +240,7 @@ static void get_string_vertices(std::vector<Texture_Vertex>& vertices, v2* min, 
         if (*string == '\n')
         {
             cx = 0;
-            cy += 32.0;
+            cy += 32.0 * line_spacing;
         }
         if ((u8) *string >= 32 && (u8) *string < 128)
         {
@@ -273,11 +275,11 @@ static void get_string_vertices(std::vector<Texture_Vertex>& vertices, v2* min, 
     }
 }
 
-void render_string(Font* font, float x, float y, float scale, float align, char* string, v3 color, bool render_box)
+void render_string(Font* font, float x, float y, float scale, float align, char* string, v3 color, bool render_box, float line_spacing)
 {
     v2 min, max;
     std::vector<Texture_Vertex> vertices;
-    get_string_vertices(vertices, &min, &max, font, x, y, scale, string);
+    get_string_vertices(vertices, &min, &max, font, x, y, scale, string, line_spacing);
 
     float width = max.x - min.x;
     float adjust = align * width;

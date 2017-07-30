@@ -7,6 +7,5 @@ varying vec2 fragment_texcoord;
 
 void main()
 {
-    float alpha = texture2D(tex, fragment_texcoord).a;
-    gl_FragColor = vec4(color, alpha);
+    gl_FragColor = texture2D(tex, fragment_texcoord) * vec4(color, 1.0);
 }

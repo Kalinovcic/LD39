@@ -7,13 +7,15 @@ double delta_seconds;
 double seconds_since_start = 0.0;
 
 v3 target_camera;
+v3 target_camera_vector;
 
 enum State
 {
+    STATE_MENU,
     STATE_PLAYING,
 };
 
-State state;
+State state = STATE_MENU;
 
 bool frequencies[256];
 
@@ -171,11 +173,23 @@ v3 get_entity_display_position(Entity* e)
 
 void place_camera()
 {
-    camera_vector = glm::vec3(1.0f, -1.6, -1.0f);
+    target_camera_vector = glm::normalize(glm::vec3(1.0f, -1.6, -1.0f));
     target_camera = get_entity_display_position(robot);
     target_camera.y = get_desired_tile_display_y(get_tile(robot->tile_x, robot->tile_z)->y);
-    target_camera -= camera_vector * 3.0f;
+    /*if (input_tab)
+    {
+        target_camera_vector = glm::normalize(glm::vec3(0.05f, -1.0f, -0.05f));
+        target_camera.x = level.count_x / 2.0f;
+        target_camera.z = level.count_z / 2.0f;
+        target_camera -= target_camera_vector * 10.0f;
+    }
+    else*/
+    {
+        target_camera -= target_camera_vector * 6.4f;
+    }
+
     camera += (target_camera - camera) * std::min((float) 1.0f, (float) delta_seconds * 4.0f);
+    camera_vector += (target_camera_vector - camera_vector) * std::min((float) 1.0f, (float) delta_seconds * 4.0f);
 }
 
 void animate_entity(Entity* e)
@@ -842,8 +856,6 @@ void update_entity(Entity* e)
         {
             if (box0 != box1) break;
 
-            remove_entity(box0);
-
             auto box = add_entity<Box>(ENTITY_BOX);
             box->mesh = &mesh_box;
             box->scale = 0.3f;
@@ -858,6 +870,8 @@ void update_entity(Entity* e)
             box->display_z = box->tile_z = e->tile_z - vz;
             tile1->box = box;
 
+            remove_entity(box0);
+
             play_sound(&sound_poof);
         }
         else if (e->kind == ENTITY_MERGER)
@@ -865,9 +879,6 @@ void update_entity(Entity* e)
             if (box0 == box1) break;
             if (box0->kind != ENTITY_BOX) break;
             if (box1->kind != ENTITY_BOX) break;
-
-            remove_entity(box0);
-            remove_entity(box1);
 
             auto box = add_entity<Long_Box>(ENTITY_LONG_BOX);
             box->mesh = &mesh_long_box;
@@ -879,9 +890,51 @@ void update_entity(Entity* e)
             tile0->box = box;
             tile1->box = box;
 
+            remove_entity(box0);
+            remove_entity(box1);
+
             play_sound(&sound_poof);
         }
     } break;
+
+    case ENTITY_LONG_BOX:
+    {
+        int vx, vz;
+        angle_to_xz(e->angle, &vx, &vz);
+
+        auto tile0 = get_tile(e->tile_x,      e->tile_z     );
+        auto tile1 = get_tile(e->tile_x - vx, e->tile_z - vz);
+        if (tile0->y != tile1->y)
+        {
+            if (e->animating)
+            {
+                if (tile0->y > tile1->y) break;
+                e->tile_x -= vx;
+                e->tile_z -= vz;
+                e->angle = correct_angle(e->angle + 180);
+            }
+            else
+            {
+                auto box = add_entity<Box>(ENTITY_BOX);
+                box->mesh = &mesh_box;
+                box->scale = 0.3f;
+                box->display_x = box->tile_x = e->tile_x;
+                box->display_z = box->tile_z = e->tile_z;
+                tile0->box = box;
+
+                box = add_entity<Box>(ENTITY_BOX);
+                box->mesh = &mesh_box;
+                box->scale = 0.3f;
+                box->display_x = box->tile_x = e->tile_x - vx;
+                box->display_z = box->tile_z = e->tile_z - vz;
+                tile1->box = box;
+
+                remove_entity(e);
+
+                play_sound(&sound_poof);
+            }
+        }
+    }
 
     default: break;
 
@@ -940,6 +993,7 @@ void render_level()
 
             animate_entity(e);
 
+            if (e->kind == ENTITY_ROBOT && input_tab) continue;
             begin_mesh(e->mesh);
             render_mesh(e->mesh, get_entity_display_position(e), e->display_angle, e->scale);
             end_mesh();
@@ -950,6 +1004,7 @@ void render_battery()
 {
     auto battery_empty_color = glm::vec3(207.0f / 255.0f, 216.0f / 255.0f, 220.0f / 255.0f);
     auto battery_full_color  = glm::vec3(139.0f / 255.0f, 195.0f / 255.0f,  74.0f / 255.0f);
+    auto battery_back_color  = glm::vec3(1.0f, 1.0f, 1.0f);
 
     float a0 = (float) level.remaining_moves / (float) level.max_moves;
     float a1 = 1.0 - a0;
@@ -960,6 +1015,7 @@ void render_battery()
     float y0 = 10.0f;
     float y1 = y0 + a0 * s;
 
+    render_texture(texture_battery, x - 5.5, y0 - 4, x + s + 5.5, y0 + s + 4, 0, 1, 1, 0, battery_back_color);
     render_texture(texture_battery, x, y0, x + s, y0 + s * a0, 0,  1, 1, a1, battery_full_color);
     render_texture(texture_battery, x, y1, x + s, y1 + s * a1, 0, a1, 1,  0, battery_empty_color);
 
@@ -986,7 +1042,7 @@ void render_ui()
         render_string(&font, white_screen.x, white_screen.y - 26.0f, 24.0f / 48.0f, 0.5f, (char*) "Reach this white block!", glm::vec3(1.0f, 1.0f, 1.0f));
     }
 
-    render_string(&font, window_width - 80.00f, 8.0f, 24.0f / 48.0f, 0.5f, (char*) "Press R to restart", glm::vec3(1.0f, 1.0f, 1.0f));
+    render_string(&font, window_width - 8.0f, 8.0f, 24.0f / 48.0f, 1.0f, (char*) "Press R to restart, ESC to return to menu", glm::vec3(1.0f, 1.0f, 1.0f));
 
     render_battery();
 
@@ -998,22 +1054,31 @@ void render_ui()
     glEnable(GL_DEPTH_TEST);
 }
 
-void render_scene()
+void set_perspective_and_light()
 {
-    if (level.first_frame)
-        animate_entity(robot);
-    place_camera();
-    if (level.first_frame)
-        camera = target_camera;
-
     light_direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.2f));
 
     perspective = glm::perspective(glm::radians(60.0f), (float) window_width / (float) window_height, 0.1f, 100.0f);
     view = glm::lookAt(camera, camera + camera_vector, glm::vec3(0.0f, 1.0f, 0.0f));
     perspective_view = perspective * view;
+}
 
+void render_scene()
+{
+    if (level.first_frame)
+    {
+        animate_entity(robot);
+    }
+    place_camera();
+    if (level.first_frame)
+    {
+        camera = target_camera;
+        camera_vector = target_camera_vector;
+    }
+
+    set_perspective_and_light();
     render_level();
-    render_ui();
+    if (!input_tab) render_ui();
 }
 
 void frame()
@@ -1030,35 +1095,101 @@ void frame()
 
     ortho = glm::ortho(0.0f, (float) window_width, 0.0f, (float) window_height);
 
-    if (input_previous_level)
+    if (input_escape)
     {
-        current_level_index--;
-        input_previous_level = false;
-        input_reset = true;
+        state = STATE_MENU;
+        input_escape = false;
+
+        create_level(99);
+        remove_entity(robot);
     }
 
-    if (input_next_level)
+    if (state == STATE_MENU)
     {
-        if (level.is_final)
+        camera_vector = glm::normalize(glm::vec3(sin(seconds_since_start * 0.2f), -0.3, cos(seconds_since_start * 0.2f)));
+        camera = { level.count_x / 2.0f, 0.0f, level.count_z / 2.0f };
+        camera -= camera_vector * 20.0f;
+
+        set_perspective_and_light();
+        render_level();
+
+        glDisable(GL_DEPTH_TEST);
+
+        float title_width  = 512.0f;
+        float title_height = 256.0f;
+        float title_x = (window_width  - title_width ) / 2.0f;
+        float title_y = window_height * 0.6f;
+        render_texture(texture_title, title_x, title_y, title_x + title_width, title_y + title_height, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
+
+        render_string(&font, window_width / 2.0f, window_height * 0.35f, 40.0f / 48.0f, 0.5f, (char*) " Press SPACE to begin\nor select a level below", glm::vec3(1.0f, 1.0f, 1.0f), true, 1.2f);
+
+        int icon_count = sizeof(texture_level_icon) / sizeof(GLuint);
+        float icon_size = window_height * 0.15f;
+        float icon_pad  = window_height * 0.05f;
+        float all_icons_width = icon_count * icon_size + (icon_count - 1) * icon_pad;
+        for (int i = 0; i < icon_count; i++)
         {
-            // @Incomplete
+            float x = (window_width - all_icons_width) / 2.0f + i * (icon_size + icon_pad);
+            float y = window_height * 0.08f;
+            float s = icon_size;
+            if (input_mouse_x >= x && input_mouse_x < x + s && input_mouse_y >= y && input_mouse_y < y + s)
+            {
+                x -= icon_size * 0.15f;
+                y -= icon_size * 0.15f;
+                s += icon_size * 0.30f;
+                if (input_mouse_click)
+                {
+                    current_level_index = i;
+                    input_reset = true;
+                    state = STATE_PLAYING;
+                }
+            }
+            render_colored_quad(x, y, x + s, y + s, { 0.0f, 0.0f, 0.0f, 0.7f });
+            render_texture(texture_level_icon[i], x, y, x + s, y + s, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
         }
-        else
+
+        render_string(&font, window_width / 2.0f, window_height * 0.02f, 24.0f / 48.0f, 0.5f, (char*) "Lovro Kalinovcic, 2017", glm::vec3(0.0f, 0.0f, 0.0f), false);
+
+        glEnable(GL_DEPTH_TEST);
+
+        if (input_space)
         {
-            current_level_index++;
+            current_level_index = 0;
+            input_reset = true;
+            state = STATE_PLAYING;
         }
-        input_next_level = false;
-        input_reset = true;
-    }
 
-    if (input_reset)
-    {
-        input_reset = 0;
-        create_level(current_level_index);
+        input_escape = input_left = input_right = input_up = input_down = false;
     }
-
-    if (state == STATE_PLAYING)
+    else if (state == STATE_PLAYING)
     {
+        if (input_previous_level)
+        {
+            current_level_index--;
+            input_previous_level = false;
+            input_reset = true;
+        }
+
+        if (input_next_level)
+        {
+            if (level.is_final)
+            {
+                input_escape = true;
+            }
+            else
+            {
+                current_level_index++;
+            }
+            input_next_level = false;
+            input_reset = true;
+        }
+
+        if (input_reset)
+        {
+            input_reset = 0;
+            create_level(current_level_index);
+        }
+
         if (!level.is_fading_out)
             update_level();
         render_scene();
@@ -1076,5 +1207,6 @@ void frame()
         }
 
         level.first_frame = false;
+        input_space = false;
     }
 }

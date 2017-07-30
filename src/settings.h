@@ -22,7 +22,7 @@ struct String
 
 const int WINDOW_WIDTH  = 16 * 60;
 const int WINDOW_HEIGHT = 9 * 60;
-const char* WINDOW_TITLE = "LD39";
+const char* WINDOW_TITLE = "Swing";
 
 void critical(const char* format, ...)
 {

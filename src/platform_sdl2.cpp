@@ -27,6 +27,7 @@ void create_the_window()
         critical("SDL2 failed to create a window!");
     }
 
+    SDL_SetWindowMinimumSize(the_window.handle, WINDOW_WIDTH, WINDOW_HEIGHT);
     SDL_ShowWindow(the_window.handle);
 
     the_window.gl = SDL_GL_CreateContext(the_window.handle);
@@ -49,6 +50,8 @@ void destroy_the_window()
 
 void process_events()
 {
+    input_mouse_click = false;
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -67,9 +70,29 @@ void process_events()
             if (scan == SDL_SCANCODE_UP    || scan == SDL_SCANCODE_W) input_up    = true;
             if (scan == SDL_SCANCODE_DOWN  || scan == SDL_SCANCODE_S) input_down  = true;
 
-            if (scan == SDL_SCANCODE_R)  input_reset = true;
-            if (scan == SDL_SCANCODE_F1) input_previous_level = true;
-            if (scan == SDL_SCANCODE_F2) input_next_level = true;
+            if (scan == SDL_SCANCODE_ESCAPE) input_escape = true;
+            if (scan == SDL_SCANCODE_TAB)    input_tab = true;
+            if (scan == SDL_SCANCODE_SPACE)  input_space = true;
+            if (scan == SDL_SCANCODE_R)      input_reset = true;
+            if (scan == SDL_SCANCODE_F1)     input_previous_level = true;
+            if (scan == SDL_SCANCODE_F2)     input_next_level = true;
+        } break;
+        case SDL_KEYUP:
+        {
+            if (event.key.repeat) break;
+            auto scan = event.key.keysym.scancode;
+
+            if (scan == SDL_SCANCODE_TAB) input_tab = false;
+        } break;
+        case SDL_MOUSEMOTION:
+        {
+            input_mouse_x = event.motion.x;
+            input_mouse_y = window_height - event.motion.y;
+        } break;
+        case SDL_MOUSEBUTTONDOWN:
+        {
+            if (event.button.button != SDL_BUTTON_LEFT) break;
+            input_mouse_click = true;
         } break;
         }
     }

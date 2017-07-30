@@ -52,7 +52,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     load_data();
 
-    input_reset = true;
+    input_escape = true;
 
 #if WEB
     emscripten_set_main_loop_arg(main_loop, NULL, -1, 1);

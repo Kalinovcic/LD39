@@ -26,4 +26,4 @@ GLuint load_texture(const char* path);
 void render_texture(GLuint texture, float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1, v3 color);
 
 void load_font(const char* path, Font* font);
-void render_string(Font* font, float x, float y, float scale, float align, char* string, v3 color, bool render_box = true);
+void render_string(Font* font, float x, float y, float scale, float align, char* string, v3 color, bool render_box = true, float line_spacing = 0.95f);
