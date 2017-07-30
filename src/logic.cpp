@@ -102,6 +102,8 @@ struct Level
     float fade;
     float fade_velocity;
 
+    float wave_strength;
+
     bool first_frame;
     bool is_final;
     bool won;
@@ -733,7 +735,7 @@ void create_level(int index)
         }
 
     int is_final;
-    sscanf(settings, "%d%d%d", &level.max_moves, &robot->angle, &is_final);
+    sscanf(settings, "%d%d%d%f", &level.max_moves, &robot->angle, &is_final, &level.wave_strength);
     level.remaining_moves = level.max_moves;
     level.is_final = (bool) is_final;
 
@@ -861,6 +863,8 @@ void update_entity(Entity* e)
         else if (e->kind == ENTITY_MERGER)
         {
             if (box0 == box1) break;
+            if (box0->kind != ENTITY_BOX) break;
+            if (box1->kind != ENTITY_BOX) break;
 
             remove_entity(box0);
             remove_entity(box1);
@@ -919,7 +923,7 @@ void render_level()
 
             float y = tile->display_y;
             if (tile->wave)
-                 y += sin(seconds_since_start * 5.0f + x + z) * 0.2f;
+                 y += sin(seconds_since_start * 5.0f + x + z) * level.wave_strength;
 
             set_mesh_color_multiplier(tile->color);
             render_mesh(&mesh_block, glm::vec3((float) x, y, (float) z), 0.0f);
