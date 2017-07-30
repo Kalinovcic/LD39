@@ -23,6 +23,7 @@ enum Entity_Kind
     ENTITY_GOAL,
     ENTTIY_DETECTOR,
     ENTITY_BOX,
+    ENTITY_LONG_BOX,
 };
 
 struct Entity
@@ -61,6 +62,8 @@ struct Detector: Entity
 };
 
 struct Box: Entity {};
+
+struct Long_Box: Box {};
 
 struct Tile
 {
@@ -198,6 +201,240 @@ int correct_angle(int angle)
         return 360 - (-angle % 360);
     else
         return angle % 360;
+}
+
+void angle_to_xz(int angle, int* dx, int* dz)
+{
+    int orientation = angle / 90;
+    *dx = DX[orientation];
+    *dz = DZ[orientation];
+}
+
+int xz_to_angle(int dx, int dz)
+{
+    for (int i = 0; i < 4; i++)
+        if (dx == DX[i] && dz == DZ[i])
+            return 90 * i;
+    critical("Illegal arguments to xz_to_angle!");
+    return -1;
+}
+
+bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv, bool is_box);
+
+bool in_bounds(int x, int z)
+{
+    return !(x < 0 || x >= level.count_x || z < 0 || z >= level.count_z);
+}
+
+bool try_to_occupy(Entity* e, int x, int z, bool extension, bool allow_bumping, int vx, int vz, float vv)
+{
+    if (!in_bounds(x, z))
+        return extension;
+
+    auto t = get_tile(x, z);
+    int ey = get_tile(e->tile_x, e->tile_z)->y;
+    if (ey > t->y) return extension;
+    if (ey < t->y) return false;
+
+    if (t->box)
+    {
+        if (!allow_bumping)
+            return false;
+
+        return move_entity(t->box, x - t->box->tile_x, z - t->box->tile_z, vx, vz, vv, true);
+    }
+
+    return true;
+}
+
+bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv, bool is_box)
+{
+    if (e->animating)
+        return false;
+
+    if (!e->extended)
+    {
+        int nx = e->tile_x + vx;
+        int nz = e->tile_z + vz;
+
+        if (try_to_occupy(e, nx, nz, false, true, vx, vz, vv))
+        {
+            assert(is_box);
+            get_tile(e->tile_x, e->tile_z)->box = NULL;
+            get_tile(       nx,        nz)->box = (Box*) e;
+
+            e->tile_x = nx;
+            e->tile_z = nz;
+
+            e->animating = true;
+            e->animation_time = vv;
+            e->velocity_x = vx / e->animation_time;
+            e->velocity_z = vz / e->animation_time;
+
+            return true;
+        }
+        else
+        {
+            if (!is_box)
+            {
+                play_sound(&sound_robot_hit);
+            }
+        
+            e->animating = true;
+            e->animation_time = 0.2f;
+            e->animation_reverses = true;
+            e->animation_reverse_time = 0.1f;
+            e->velocity_x = 0.5 * vx / e->animation_time;
+            e->velocity_z = 0.5 * vz / e->animation_time;
+
+            return false;
+        }
+    }
+    else
+    {
+        int ex, ez;
+        angle_to_xz(e->angle, &ex, &ez);
+        ex = -ex; ez = -ez;
+
+        int vangle = xz_to_angle(vx, vz);
+
+        if (vangle == e->angle || vangle == correct_angle(e->angle + 180))
+        {
+            int nx1 = e->tile_x + vx;
+            int nz1 = e->tile_z + vz;
+            int nx2 = e->tile_x + vx + ex;
+            int nz2 = e->tile_z + vz + ez;
+
+            if (is_box)
+            {
+                get_tile(e->tile_x,      e->tile_z     )->box = NULL;
+                get_tile(e->tile_x + ex, e->tile_z + ez)->box = NULL;
+            }
+
+            bool allow_hanging = !is_box;
+            if (try_to_occupy(e, nx1, nz1,         false, true, vx, vz, vv) &&
+                try_to_occupy(e, nx2, nz2, allow_hanging, true, vx, vz, vv))
+            {
+                if (is_box)
+                {
+                    get_tile(nx1, nz1)->box = (Box*) e;
+                    get_tile(nx2, nz2)->box = (Box*) e;
+                }
+                else
+                {
+                    play_sound(&sound_robot_move[next_move_sound = (next_move_sound + 1) % 3]);
+                    level.remaining_moves -= 1;
+                }
+
+                e->tile_x = nx1;
+                e->tile_z = nz1;
+
+                e->animating = true;
+                e->animation_time = vv;
+                e->velocity_x = vx / e->animation_time;
+                e->velocity_z = vz / e->animation_time;
+
+                return true;
+            }
+            else
+            {
+                if (is_box)
+                {
+                    get_tile(e->tile_x,      e->tile_z     )->box = (Box*) e;
+                    get_tile(e->tile_x + ex, e->tile_z + ez)->box = (Box*) e;
+                }
+                else
+                {
+                    play_sound(&sound_robot_hit);
+                }
+            
+                e->animating = true;
+                e->animation_time = 0.2f;
+                e->animation_reverses = true;
+                e->animation_reverse_time = 0.1f;
+                e->velocity_x = 0.5 * vx / e->animation_time;
+                e->velocity_z = 0.5 * vz / e->animation_time;
+
+                return false;
+            }
+        }
+        else
+        {
+            if (!force_dx && !force_dz)
+            {
+                e->tile_x += ex;
+                e->tile_z += ez;
+                e->angle = correct_angle(e->angle + 180);
+                e->display_x += ex;
+                e->display_z += ez;
+                e->display_angle += 180.0;
+                ex = -ex;
+                ez = -ez;
+            }
+
+            int plus_minus = (vangle == correct_angle(e->angle - 90)) ? 1 : -1;
+            int new_angle = correct_angle(e->angle + 90 * plus_minus);
+
+            int dx = -ex;
+            int dz = -ez;
+            int dx2, dz2;
+            angle_to_xz(new_angle, &dx2, &dz2);
+
+            float animation_angle;
+
+            bool allow_hanging = !is_box;
+            bool turn = try_to_occupy(e, e->tile_x - dx2 - dx, e->tile_z - dz2 - dz, allow_hanging, true, -dx2, -dz2, vv);
+            if (!turn)
+                animation_angle = 40;
+            else
+            {
+                turn = try_to_occupy(e, e->tile_x - dx2, e->tile_z - dz2, allow_hanging, true, dx, dz, vv);
+                if (!turn)
+                    animation_angle = 90;
+                else
+                {
+                    turn = in_bounds(e->tile_x, e->tile_z);
+                    if (!turn)
+                        animation_angle = 40;
+                    else
+                        animation_angle = 90;
+                }
+            }
+
+            e->animating = true;
+            e->animation_time = animation_angle / 90.0 * vv;
+            e->velocity_angle = plus_minus * animation_angle / e->animation_time;
+
+            if (turn)
+            {
+                if (is_box)
+                {
+                    get_tile(e->tile_x +  ex, e->tile_z +  ez)->box = NULL;
+                    get_tile(e->tile_x - dx2, e->tile_z - dz2)->box = (Box*) e;
+                }
+                else
+                {
+                    play_sound(&sound_robot_turn);
+                }
+
+                e->angle = new_angle;
+
+                return true;
+            }
+            else
+            {
+                if (!is_box)
+                {
+                    play_sound(&sound_robot_hit);
+                }
+
+                e->animation_reverses = true;
+                e->animation_reverse_time = e->animation_time / 2;
+
+                return false;
+            }
+        }
+    }
 }
 
 bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
@@ -366,10 +603,12 @@ void create_level(int index)
     level.count_x = level_layout.width;
     level.count_z = level_layout.height;
     level.tiles = (Tile*) malloc(level.count_x * level.count_z * sizeof(Tile));
+    memset(level.tiles, 0, level.count_x * level.count_z * sizeof(Tile));
 
     robot = add_entity<Robot>(ENTITY_ROBOT);
     robot->mesh = &mesh_robot;
     robot->scale = 0.58f;
+    robot->extended = true;
 
     for (int z = 0; z < level.count_z; z++)
         for (int x = 0; x < level.count_x; x++)
@@ -407,7 +646,24 @@ void create_level(int index)
                 tile->frequency = 0;
             }
 
-            tile->box = NULL;
+            if (kind == 192)
+            {
+                robot->tile_x = x;
+                robot->tile_z = z;
+            }
+
+            if (kind == 120)
+            {
+                auto box = add_entity<Long_Box>(ENTITY_LONG_BOX);
+                box->mesh = &mesh_long_box;
+                box->scale = 0.3f;
+                box->extended = true;
+                box->display_x = box->tile_x = x;
+                box->display_z = box->tile_z = z;
+                tile->box = box;
+                get_tile(x - DX[0], z - DZ[0])->box = box;
+            }
+
             if (kind == 255)
             {
                 auto box = add_entity<Box>(ENTITY_BOX);
@@ -417,16 +673,10 @@ void create_level(int index)
                 box->display_z = box->tile_z = z;
                 tile->box = box;
             }
-
-            if (kind == 192)
-            {
-                robot->tile_x = x;
-                robot->tile_z = z;
-            }
         }
 
     int is_final;
-    sscanf(settings, "%d %d %d", &level.max_moves, &robot->angle, &is_final);
+    sscanf(settings, "%d%d%d", &level.max_moves, &robot->angle, &is_final);
     level.remaining_moves = level.max_moves;
     level.is_final = (bool) is_final;
 
@@ -464,10 +714,17 @@ void update_entity(Entity* e)
             if (queue_down)  { input_down  = true; queue_down  = false; }
         }
 
-        if (input_left)  rotate_robot( 1);
-        if (input_right) rotate_robot(-1);
-        if (input_up)    move_robot( 1);
-        if (input_down)  move_robot(-1);
+        int vx, vz;
+        int lvx, lvz;
+        int rvx, rvz;
+        angle_to_xz(robot->angle, &vx, &vz);
+        angle_to_xz(correct_angle(robot->angle - 90), &lvx, &lvz);
+        angle_to_xz(correct_angle(robot->angle + 90), &rvx, &rvz);
+
+        if (input_left)  move_entity(robot, -vx, -vz, lvx, lvz, 0.3, false);
+        if (input_right) move_entity(robot, -vx, -vz, rvx, rvz, 0.3, false);
+        if (input_up)    move_entity(robot, 0, 0,  vx,  vz, 0.5, false);
+        if (input_down)  move_entity(robot, 0, 0, -vx, -vz, 0.5, false);
 
         input_left = input_right = input_up = input_down = false;
 
