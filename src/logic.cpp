@@ -75,6 +75,7 @@ struct Long_Box: Box {};
 struct Tile
 {
     bool  exists;
+    bool  wave;
     int   y;
     int   original_y;
     float display_y;
@@ -656,6 +657,7 @@ void create_level(int index)
             tile->color      = glm::vec3(level_decor.data[i*3+0]/255.0f, level_decor.data[i*3+1]/255.0f, level_decor.data[i*3+2]/255.0f);
             tile->frequency  = frequency;
             tile->lower      = kind != 200;
+            tile->wave       = kind == 1;
 
             if (kind == 64)
             {
@@ -915,8 +917,12 @@ void render_level()
             float desired = get_desired_tile_display_y(tile->y);
             tile->display_y += (desired - tile->display_y) * std::min(1.0f, (float)(delta_seconds * 6.0f));
 
+            float y = tile->display_y;
+            if (tile->wave)
+                 y += sin(seconds_since_start * 5.0f + x + z) * 0.2f;
+
             set_mesh_color_multiplier(tile->color);
-            render_mesh(&mesh_block, glm::vec3((float) x, tile->display_y, (float) z), 0.0f);
+            render_mesh(&mesh_block, glm::vec3((float) x, y, (float) z), 0.0f);
         }
     end_mesh();
 
