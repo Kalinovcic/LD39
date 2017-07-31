@@ -481,145 +481,6 @@ bool move_entity(Entity* e, int force_dx, int force_dz, int vx, int vz, float vv
     }
 }
 
-bool can_move_to_tile(int x, int z, bool extension, int vx, int vz, float vv)
-{
-    if (x < 0 || x >= level.count_x || z < 0 || z >= level.count_z)
-        return extension;
-    auto tile = get_tile(x, z);
-    auto robot_tile = get_tile(robot->tile_x, robot->tile_z);
-    int y0 = robot_tile->y;
-    int y1 = tile->y;
-    if (y0 > y1)
-        return extension;
-    if (y0 < y1)
-        return false;
-    if (tile->box)
-    {
-        int dx = x + vx;
-        int dz = z + vz;
-        if (dx < 0 || dx >= level.count_x || dz < 0 || dz >= level.count_z)
-            return false;
-        auto displacement_tile = get_tile(dx, dz);
-        if (y0 != displacement_tile->y)
-            return false;
-        if (displacement_tile->box)
-            return false;
-
-        auto box = tile->box;
-        box->tile_x = dx;
-        box->tile_z = dz;
-        box->animating = true;
-        box->animation_time = vv;
-        box->display_x = box->tile_x - vx;
-        box->display_z = box->tile_z - vz;
-        box->velocity_x = vx / vv;
-        box->velocity_z = vz / vv;
-
-        tile->box = NULL;
-        displacement_tile->box = box;
-        return true;
-    }
-    return true;
-}
-
-void move_robot(int direction)
-{
-    if (robot->animating) return;
-
-    if (robot->angle < 0)
-        robot->angle = 360 - (-robot->angle % 360);
-    else
-        robot->angle = robot->angle % 360;
-
-    static int DX[] = { -1,  0,  1,  0 };
-    static int DZ[] = {  0,  1,  0, -1 };
-
-    int orientation = robot->angle / 90;
-    int dx = DX[orientation] * direction;
-    int dz = DZ[orientation] * direction;
-
-    int new_x = robot->tile_x + dx;
-    int new_z = robot->tile_z + dz;
-
-    bool move = can_move_to_tile(new_x, new_z, false, dx, dz, 0.5f) &&
-                can_move_to_tile(new_x - DX[orientation], new_z - DZ[orientation], true, dx, dz, 0.5f);
-
-    float delta_move = 1.0f;
-    if (move)
-    {
-        play_sound(&sound_robot_move[next_move_sound = (next_move_sound + 1) % 3]);
-        robot->tile_x = new_x;
-        robot->tile_z = new_z;
-        robot->animation_time = 0.5;
-
-        level.remaining_moves--;
-    }
-    else
-    {
-        play_sound(&sound_robot_hit);
-        robot->animation_reverses = true;
-        robot->animation_reverse_time = 0.1;
-        robot->animation_time = 0.2;
-        delta_move = 0.5;
-    }
-
-    robot->animating = true;
-    robot->velocity_x = dx * delta_move / robot->animation_time;
-    robot->velocity_z = dz * delta_move / robot->animation_time;
-}
-
-void rotate_robot(int plus_minus)
-{
-    if (robot->animating) return;
-
-    static int DX[] = { -1,  0,  1,  0 };
-    static int DZ[] = {  0,  1,  0, -1 };
-
-    int orientation = robot->angle / 90;
-    int dx = DX[orientation];
-    int dz = DZ[orientation];
-
-    int new_angle = correct_angle(robot->angle + 90 * plus_minus);
-
-    int orientation2 = new_angle / 90;
-    int dx2 = DX[orientation2];
-    int dz2 = DZ[orientation2];
-
-    float animation_angle = 90;
-    robot->animation_time = 0.3;
-
-    bool turn = can_move_to_tile(robot->tile_x - dx2 - dx, robot->tile_z - dz2 - dz, true, -dx2, -dz2, 0.3f);
-    if (!turn)
-    {
-        animation_angle = 40;
-        robot->animation_time *= 40.0 / 90.0;
-    }
-    else
-    {
-        turn = can_move_to_tile(robot->tile_x - dx2, robot->tile_z - dz2, true, dx, dz, 0.3f);
-        if (!turn)
-        {
-            animation_angle = 90;
-            robot->animation_time *= 90.0 / 90.0;
-        }
-    }
-
-    if (turn)
-    {
-        play_sound(&sound_robot_turn);
-        robot->angle = new_angle;
-    }
-    else
-    {
-        play_sound(&sound_robot_hit);
-        robot->animation_reverses = true;
-        robot->animation_reverse_time = robot->animation_time / 2;
-    }
-
-    robot->animating = true;
-    robot->velocity_angle = plus_minus * animation_angle * 1.0 / robot->animation_time;
-}
-
 void create_level(int index)
 {
     if (level.tiles) free(level.tiles);
@@ -1113,44 +974,47 @@ void frame()
         set_perspective_and_light();
         render_level();
 
-        glDisable(GL_DEPTH_TEST);
-
-        float title_width  = 512.0f;
-        float title_height = 256.0f;
-        float title_x = (window_width  - title_width ) / 2.0f;
-        float title_y = window_height * 0.6f;
-        render_texture(texture_title, title_x, title_y, title_x + title_width, title_y + title_height, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
-
-        render_string(&font, window_width / 2.0f, window_height * 0.35f, 40.0f / 48.0f, 0.5f, (char*) " Press SPACE to begin\nor select a level below", glm::vec3(1.0f, 1.0f, 1.0f), true, 1.2f);
-
-        int icon_count = sizeof(texture_level_icon) / sizeof(GLuint);
-        float icon_size = window_height * 0.15f;
-        float icon_pad  = window_height * 0.05f;
-        float all_icons_width = icon_count * icon_size + (icon_count - 1) * icon_pad;
-        for (int i = 0; i < icon_count; i++)
+        if (!input_tab)
         {
-            float x = (window_width - all_icons_width) / 2.0f + i * (icon_size + icon_pad);
-            float y = window_height * 0.08f;
-            float s = icon_size;
-            if (input_mouse_x >= x && input_mouse_x < x + s && input_mouse_y >= y && input_mouse_y < y + s)
+            glDisable(GL_DEPTH_TEST);
+
+            float title_width  = 512.0f;
+            float title_height = 256.0f;
+            float title_x = (window_width  - title_width ) / 2.0f;
+            float title_y = window_height * 0.6f;
+            render_texture(texture_title, title_x, title_y, title_x + title_width, title_y + title_height, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
+
+            render_string(&font, window_width / 2.0f, window_height * 0.35f, 40.0f / 48.0f, 0.5f, (char*) " Press SPACE to begin\nor select a level below", glm::vec3(1.0f, 1.0f, 1.0f), true, 1.2f);
+
+            int icon_count = sizeof(texture_level_icon) / sizeof(GLuint);
+            float icon_size = window_height * 0.15f;
+            float icon_pad  = window_height * 0.05f;
+            float all_icons_width = icon_count * icon_size + (icon_count - 1) * icon_pad;
+            for (int i = 0; i < icon_count; i++)
             {
-                x -= icon_size * 0.15f;
-                y -= icon_size * 0.15f;
-                s += icon_size * 0.30f;
-                if (input_mouse_click)
+                float x = (window_width - all_icons_width) / 2.0f + i * (icon_size + icon_pad);
+                float y = window_height * 0.08f;
+                float s = icon_size;
+                if (input_mouse_x >= x && input_mouse_x < x + s && input_mouse_y >= y && input_mouse_y < y + s)
                 {
-                    current_level_index = i;
-                    input_reset = true;
-                    state = STATE_PLAYING;
+                    x -= icon_size * 0.15f;
+                    y -= icon_size * 0.15f;
+                    s += icon_size * 0.30f;
+                    if (input_mouse_click)
+                    {
+                        current_level_index = i;
+                        input_reset = true;
+                        state = STATE_PLAYING;
+                    }
                 }
+                render_colored_quad(x, y, x + s, y + s, { 0.0f, 0.0f, 0.0f, 0.7f });
+                render_texture(texture_level_icon[i], x, y, x + s, y + s, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
             }
-            render_colored_quad(x, y, x + s, y + s, { 0.0f, 0.0f, 0.0f, 0.7f });
-            render_texture(texture_level_icon[i], x, y, x + s, y + s, 0, 1, 1, 0, { 1.0f, 1.0f, 1.0f });
+
+            render_string(&font, window_width / 2.0f, window_height * 0.02f, 24.0f / 48.0f, 0.5f, (char*) "Lovro Kalinovcic, 2017", glm::vec3(0.0f, 0.0f, 0.0f), false);
+
+            glEnable(GL_DEPTH_TEST);
         }
-
-        render_string(&font, window_width / 2.0f, window_height * 0.02f, 24.0f / 48.0f, 0.5f, (char*) "Lovro Kalinovcic, 2017", glm::vec3(0.0f, 0.0f, 0.0f), false);
-
-        glEnable(GL_DEPTH_TEST);
 
         if (input_space)
         {
